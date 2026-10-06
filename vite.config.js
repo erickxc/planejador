@@ -165,8 +165,11 @@ function api() {
       clearInterval(g.timer); g.encerrar?.('o Planejador reiniciou');
       const executor = criarExecutor({ projetos, lerQuadro: p => ler(textoQuadro(p)), gravarQuadro, rodarAgente: rodarExecutor, rodarTestes: rodarTestesFila, notificar: notificarExecucao, dir: DIR,
         pausado: id => !!rodadas.get(id)?.rodando }); // enquanto o planejador planeja a Fila, o executor não pega dela
-      executor.recuperar();
-      g.timer = setInterval(() => executor.tick(), 5000);
+      // PLANEJADOR_SEM_EXECUTOR=1: uma segunda cópia (ex.: para ver a tela) não executa nem recupera nada nos quadros reais
+      if (process.env.PLANEJADOR_SEM_EXECUTOR !== '1') {
+        executor.recuperar();
+        g.timer = setInterval(() => executor.tick(), 5000);
+      }
       g.encerrar = motivo => { const a = executor.estado(); if (a) executor.parar(a.projeto.id, a.id, motivo); };
       if (!g.saida) {
         g.saida = true;
