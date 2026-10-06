@@ -4,7 +4,7 @@
   { "id": "carteira-web", "nome": "Carteira Web", "pasta": "C:/projects/Carteira Web" },
   { "id": "medstone", "nome": "Medstone", "pasta": "C:/projects/medstone-main" },
   { "id": "arc-stone", "nome": "ARC Stone", "pasta": "C:/projects/ARC-Stone" },
-  { "id": "aproxima", "nome": "Aproxima", "pasta": "C:/projects/APROXIMA" },
+  { "id": "aproxima", "nome": "Aproxima", "pasta": "C:/projects/APROXIMA/aprxm_sys", "quadro": "docs/PENDENCIAS.md", "rumo": "docs/planejamento/rumo.md" },
   { "id": "brotaqui", "nome": "Brotaqui", "pasta": "C:/projects/ubercgn" },
   { "id": "site-instituto", "nome": "Site Instituto", "pasta": "C:/projects/WEBSITE instituto" },
   { "id": "codenotch", "nome": "Codenotch", "pasta": "C:/projects/codenotch" }
