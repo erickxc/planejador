@@ -10,11 +10,29 @@ const ok = (cwd, ...args) => { try { git(cwd, ...args); return true; } catch { r
 
 export const temGit = (pasta) => fs.existsSync(path.join(pasta, '.git'));
 
-// ponytail: workspaces só como pastas literais, sem globs ("pacotes/*")
+const subpastas = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); } catch { return []; } };
 const pastasNm = (dir) => {
   let ws = [];
   try { const w = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).workspaces; ws = Array.isArray(w) ? w : w?.packages || []; } catch {}
-  return ['', ...ws].map(p => path.join(p, 'node_modules'));
+  const pastas = [''];
+  for (const e of ws) {
+    if (typeof e !== 'string' || e.startsWith('!')) continue;
+    // ponytail: só "x" e "x/*"; outros globs são ignorados
+    if (e.endsWith('/*')) pastas.push(...subpastas(path.join(dir, e.slice(0, -2))).map(n => path.join(e.slice(0, -2), n)));
+    else pastas.push(e);
+  }
+  return pastas.map(p => path.join(p, 'node_modules'));
+};
+const existe = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+// desfaz toda junção node_modules da cópia (sem apagar a origem)
+const soltarJuncoes = (dir, nivel = 0) => {
+  let ents = [];
+  try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const d of ents) {
+    const p = path.join(dir, d.name);
+    if (d.name === 'node_modules') { try { if (fs.lstatSync(p).isSymbolicLink()) fs.rmdirSync(p); } catch {} }
+    else if (d.name !== '.git' && d.isDirectory() && nivel < 3) soltarJuncoes(p, nivel + 1);
+  }
 };
 
 export function prepararCopia({ pasta, id, dirCopias }) {
@@ -27,7 +45,7 @@ export function prepararCopia({ pasta, id, dirCopias }) {
   }
   for (const nm of pastasNm(pasta)) {
     const origem = path.join(pasta, nm), junc = path.join(copia, nm);
-    if (!fs.existsSync(origem) || fs.existsSync(junc)) continue;
+    if (!fs.existsSync(origem) || existe(junc) || !fs.existsSync(path.dirname(junc))) continue;
     try { execFileSync('cmd', ['/c', 'mklink', '/J', junc, origem], { stdio: 'pipe' }); }
     catch (e) { throw new Error(`mklink falhou: ${(e.stderr || e.message).toString().trim()}`); }
   }
@@ -44,11 +62,7 @@ export function alteracoes({ copia, base, ramo }) {
 }
 
 export function descartar({ pasta, ramo, copia }) {
-  // desfaz as junções sem tocar na origem (rmdir não recursivo)
-  for (const nm of pastasNm(copia)) {
-    const j = path.join(copia, nm);
-    try { if (fs.lstatSync(j).isSymbolicLink()) fs.rmdirSync(j); } catch {}
-  }
+  soltarJuncoes(copia);
   if (fs.existsSync(copia)) git(pasta, 'worktree', 'remove', '--force', copia);
   git(pasta, 'worktree', 'prune');
   if (ok(pasta, 'rev-parse', '--verify', '--quiet', `refs/heads/${ramo}`)) git(pasta, 'branch', '-D', ramo);
@@ -62,6 +76,6 @@ export function aceitar({ pasta, ramo, copia }) {
     ok(pasta, 'merge', '--abort');
     return { ok: false, motivo: arqs.length ? `conflito ao juntar: ${arqs.join(', ')}` : e.message };
   }
-  descartar({ pasta, ramo, copia });
+  try { descartar({ pasta, ramo, copia }); } catch (e) { return { ok: true, aviso: e.message }; }
   return { ok: true };
 }
