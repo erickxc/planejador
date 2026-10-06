@@ -275,11 +275,12 @@ export default function App() {
   const [vistos, setVistos] = useState(() => lido('planejador:vistos', [])); // revisões já abertas (projeto/id/início)
   const [pergunta, setPergunta] = useState(null), [toast, setToast] = useState('');
   const execAnt = useRef(null);
-  const [painel, setPainel] = useState(() => lido('planejador:painel', true));
+  // o rumo começa recolhido: o quadro fica com a largura (a lista de sistemas já está na lateral)
+  const [painel, setPainel] = useState(() => lido('planejador:rumo-aberto', false));
   const [nav, setNav] = useState(() => lido('planejador:nav', true)); // lista de sistemas aberta (ou só os ícones)
   const [tema, setTema] = useState(temaGuardado);
   const [rumoDe, setRumoDe] = useState(null); // sistema aberto no painel (null = lista de todos)
-  useEffect(() => lembrar('planejador:painel', painel), [painel]);
+  useEffect(() => lembrar('planejador:rumo-aberto', painel), [painel]);
   useEffect(() => lembrar('planejador:nav', nav), [nav]);
   useEffect(() => lembrar('planejador:ocultos', ocultos), [ocultos]);
   useEffect(() => lembrar('planejador:categorias', cats), [cats]);
@@ -351,14 +352,18 @@ export default function App() {
   // cartão novo e "Planejar a Fila" do topo: no sistema aberto no rumo, senão no único visível, senão no sistema em foco
   const padrao = () => (visiveis.length === 1 ? visiveis[0] : visiveis.find(s => s.foco) || visiveis[0] || ordenados[0])?.id;
   const alvo = sistemas.find(s => s.id === (rumoDe || padrao()));
-  // clique alterna o sistema; Ctrl+clique deixa só ele
-  const clicarSistema = (s, e) => (e.detail?.ctrlKey || e.detail?.metaKey ? setOcultos(ordenados.filter(x => x.id !== s.id).map(x => x.id))
-    : setOcultos(o => (o.includes(s.id) ? o.filter(x => x !== s.id) : [...o, s.id])));
+  // clique mostra só o sistema (fica selecionado e o rumo dele vai para o painel); Ctrl+clique soma ou tira sistemas
+  const unico = ocultos.length && visiveis.length === 1 ? visiveis[0].id : null;
+  const clicarSistema = (s, e) => {
+    if (e.detail?.ctrlKey || e.detail?.metaKey) return setOcultos(o => (o.includes(s.id) ? o.filter(x => x !== s.id) : [...o, s.id]));
+    setOcultos(ordenados.filter(x => x.id !== s.id).map(x => x.id)); setRumoDe(s.id);
+  };
   const itemSistema = s => (
-    <SideNavigationItem key={s.id} text={s.nome} unselectable icon={ocultos.includes(s.id) ? 'hide' : 'show'} onClick={e => clicarSistema(s, e)}
-      tooltip={(s.proximo || 'Sem rumo ainda') + '\nCtrl+clique: só este sistema'} className={ocultos.includes(s.id) ? 'oculto' : ''}
-      tag={<Tag design={s.rodando ? 'Information' : 'Neutral'} hideStateIcon>{s.rodando ? 'planejando' : s.abertos}</Tag>} />
+    <SideNavigationItem key={s.id} text={s.nome} icon={s.foco ? 'favorite' : 'it-system'} selected={unico === s.id} onClick={e => clicarSistema(s, e)}
+      tooltip={(s.proximo || 'Sem rumo ainda') + '\nCtrl+clique: soma ou tira este sistema'} className={ocultos.includes(s.id) && !unico ? 'oculto' : ''}
+      tag={s.rodando ? <Tag design="Information" hideStateIcon>planejando</Tag> : s.abertos ? <Tag design="Neutral" hideStateIcon>{s.abertos}</Tag> : undefined} />
   );
+  const comCartoes = ordenados.filter(s => !s.foco && s.abertos), semCartoes = ordenados.filter(s => !s.foco && !s.abertos);
 
   return (
     <div className="app">
@@ -387,11 +392,13 @@ export default function App() {
       <main>
         <div className="lateral">
           <SideNavigation collapsed={!nav} accessibleName="Sistemas">
-            <SideNavigationItem text="Mostrar todos" icon="show" unselectable onClick={() => setOcultos([])} tooltip="Mostra os cartões de todos os sistemas" />
+            <SideNavigationItem text="Todos os sistemas" icon="grid" selected={!ocultos.length} onClick={() => { setOcultos([]); setRumoDe(null); }}
+              tooltip="Mostra os cartões de todos os sistemas" tag={<Tag design="Neutral" hideStateIcon>{ordenados.reduce((a, s) => a + (s.abertos || 0), 0)}</Tag>} />
             {ordenados.some(s => s.foco) && <SideNavigationGroup text="Em foco" expanded>{ordenados.filter(s => s.foco).map(itemSistema)}</SideNavigationGroup>}
-            <SideNavigationGroup text="Sistemas" expanded>{ordenados.filter(s => !s.foco).map(itemSistema)}</SideNavigationGroup>
+            {comCartoes.length > 0 && <SideNavigationGroup text="Sistemas" expanded>{comCartoes.map(itemSistema)}</SideNavigationGroup>}
+            {semCartoes.length > 0 && <SideNavigationGroup text={`Sem cartões (${semCartoes.length})`}>{semCartoes.map(itemSistema)}</SideNavigationGroup>}
           </SideNavigation>
-          {nav && <div className="agente">
+          {nav && <div className={'agente' + (execucao ? ' ativo' : '')}>
             <Label>Executor da Fila</Label>
             {execucao ? <>
               <ObjectStatus state="Information" showDefaultIcon>Executando há <Rodando inicio={execucao.inicio} /></ObjectStatus>

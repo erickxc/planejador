@@ -10,6 +10,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .lateral [ui5-side-navigation] { flex: 1; min-height: 0; }
 .lateral .oculto { opacity: .6; }
 .agente { display: flex; flex-direction: column; gap: .3rem; width: 0; min-width: 100%; padding: .75rem 1rem; border-top: 1px solid var(--sapList_BorderColor); }
+.agente.ativo { background: var(--sapInformationBackground); box-shadow: inset .1875rem 0 0 var(--sapInformativeElementColor); }
 .passo { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); }
 
 /* ── quadro: colunas com a mesma largura, rolagem própria ── */

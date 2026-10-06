@@ -6,6 +6,8 @@ import { setTheme } from '@ui5/webcomponents-base/dist/config/Theme.js';
 import '@ui5/webcomponents-fiori/dist/illustrations/EmptyList.js';
 // ícones usados na tela (cada um é carregado à parte)
 import '@ui5/webcomponents-icons/dist/add.js';
+import '@ui5/webcomponents-icons/dist/grid.js';
+import '@ui5/webcomponents-icons/dist/it-system.js';
 import '@ui5/webcomponents-icons/dist/accept.js';
 import '@ui5/webcomponents-icons/dist/ai.js';
 import '@ui5/webcomponents-icons/dist/clear-filter.js';
