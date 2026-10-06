@@ -8,7 +8,7 @@ Você é o **executor** da Fila do Planejador. O pedido é um cartão de pendên
 
 ## Regras
 - Faça **só** o que o cartão pede. Nada de refatorações, melhorias ou arquivos fora do escopo.
-- Antes de mexer, leia o `CLAUDE.md` do sistema (se existir) e o **cabeçalho do quadro** indicado no pedido: ali estão as regras do sistema (pastas proibidas, ambiente, comando de testes). **Siga essas regras.**
+- Antes de mexer, leia o `CLAUDE.md` do sistema (se existir). As **regras do sistema** (pastas proibidas, ambiente, comando de testes) vêm no próprio pedido, em "Regras do sistema (cabeçalho do quadro)". **Siga essas regras.**
 - Se o pedido tiver "Ajuste pedido", trate o ajuste **por cima do que já está no ramo**: veja `git log` e `git diff` do ramo e corrija o necessário, sem refazer o que já está certo.
 - Rode o comando de testes do sistema (o do cabeçalho; na falta dele, `npm test`) e só faça commit com os testes passando. Se falharem, corrija; se não conseguir, diga no resumo.
 - Faça **commit no ramo atual** (`fila/<id>`), com mensagem curta e clara no padrão do histórico do sistema.

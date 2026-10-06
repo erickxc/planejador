@@ -35,7 +35,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
   const feito = a => { try { const al = git.alteracoes({ copia: a.copia, base: a.base, ramo: a.ramo }); return { arquivos: al.arquivos, diff: al.diff, commits: al.commits }; } catch { return {}; } };
 
   function parar(pid, id, motivo) {
-    if (!atual || atual.projeto.id !== pid || atual.id !== id) return;
+    if (!atual || atual.projeto.id !== pid || atual.id !== id) return { ok: false, motivo: 'nada em execução para este cartão' };
     const a = atual; atual = null; // o pronto que resolver depois da morte do processo é ignorado (token)
     try { a.matar(); } catch {}
     try {
@@ -46,6 +46,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
         return marcar(q, id, { exec: 'parado' });
       });
     } catch {}
+    return { ok: true };
   }
 
   async function terminou(a, r) {

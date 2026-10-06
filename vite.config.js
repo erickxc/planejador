@@ -23,7 +23,7 @@ const CLAUDE = process.env.CLAUDE_BIN || [join(process.env.APPDATA || '', 'npm',
 const FERRAMENTAS = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git branch:*)', 'Bash(git rev-list:*)',
   'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(npm test:*)', 'Bash(npm run check:*)', 'Bash(mkdir:*)'];
 const FERRAMENTAS_EXECUTOR = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)',
-  'Bash(npm test:*)', 'Bash(npm run:*)', 'Bash(mkdir:*)'];
+  'Bash(npm test:*)', 'Bash(npm run:*)', 'Bash(node:*)'];
 
 const projetos = () => JSON.parse(readFileSync(join(DIR, 'projetos.json'), 'utf8'));
 const projeto = id => { const p = projetos().find(x => x.id === id); if (!p) throw new Error(`sistema ${id} não está no projetos.json`); return p; };
@@ -51,7 +51,7 @@ function definicaoAgente(nome) {
 
 // stream-json do claude: uma mensagem JSON por linha
 function lerStream(proc, aoMensagem) {
-  let resto = '';
+  let resto = ''; proc.stdout.setEncoding('utf8');
   proc.stdout.on('data', d => {
     const linhas = (resto + d).split('\n'); resto = linhas.pop();
     for (const l of linhas) { let m; try { m = JSON.parse(l); } catch { continue; } aoMensagem(m); }
@@ -68,7 +68,7 @@ function rodarAgente(p) {
   const pedido = `Rodada de planejamento do sistema "${p.nome}" (a pasta atual). Quadro: ${arqQuadro(p)}. Rumo: ${arqRumo(p)}. `
     + 'Siga as suas instruções: leia o quadro e as fontes do sistema, acrescente na coluna Entrada só sugestões novas e importantes, e reescreva o rumo.';
   passo(`Planejador iniciado em ${p.nome}`);
-  const proc = spawn(CLAUDE, ['-p', pedido, '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente('planejador')), '--add-dir', DIR,
+  const proc = spawn(CLAUDE, ['-p', '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente('planejador')), '--add-dir', DIR,
     '--permission-mode', 'acceptEdits', '--allowedTools', ...FERRAMENTAS, '--output-format', 'stream-json', '--verbose'],
   { cwd: p.pasta, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   lerStream(proc, m => {
@@ -96,11 +96,18 @@ function textoPasso(c) {
     default: return c.name;
   }
 }
-function rodarExecutor({ copia, pedido, onPasso }) {
+let testePid = 0; // processo de testes da Fila em andamento (é um por vez)
+const matarArvore = pid => { if (pid) try { spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }); } catch {} };
+function rodarExecutor({ copia, pedido, projeto: p, onPasso }) {
   const falso = process.env.PLANEJADOR_AGENTE_FALSO === '1';
   const proc = falso ? spawn('node', [join(DIR, 'teste', 'agente-falso.mjs'), copia, 'ok'], { windowsHide: true, stdio: 'ignore' })
     : spawn(CLAUDE, ['-p', pedido, '--agent', 'executor', '--agents', JSON.stringify(definicaoAgente('executor')), '--permission-mode', 'acceptEdits', '--max-turns', '80',
-      '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  if (!falso) { // pedido por stdin: não vira argumento nem é lido como opção
+    const regras = ler(textoQuadro(p)).cabecalho.trim();
+    proc.stdin.on('error', () => {}); proc.stderr.setEncoding('utf8');
+    proc.stdin.end(`${regras ? `Regras do sistema (cabeçalho do quadro):\n${regras}\n\n` : ''}Cartão a executar:\n${pedido}`);
+  }
   let resumo = '', ok = null;
   if (!falso) {
     lerStream(proc, m => {
@@ -113,16 +120,17 @@ function rodarExecutor({ copia, pedido, onPasso }) {
     proc.on('error', err => res({ ok: false, resumo: 'não consegui rodar o agente: ' + err.message }));
     proc.on('close', code => res({ ok: ok ?? code === 0, resumo }));
   });
-  return { pronto, matar: () => { try { spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true }); } catch {} } };
+  return { pronto, matar: () => { matarArvore(proc.pid); matarArvore(testePid); } };
 }
 function rodarTestesFila({ copia, comando }) {
   return new Promise(res => {
-    const proc = spawn(comando, { cwd: copia, shell: true, windowsHide: true });
+    const proc = spawn(comando, { cwd: copia, shell: true, windowsHide: true }); testePid = proc.pid;
+    proc.stdout.setEncoding('utf8'); proc.stderr.setEncoding('utf8');
     let linhas = [], resto = '';
     const junta = d => { const l = (resto + d).split('\n'); resto = l.pop(); linhas.push(...l); if (linhas.length > 200) linhas = linhas.slice(-200); };
     proc.stdout.on('data', junta); proc.stderr.on('data', junta);
     proc.on('error', e => res({ ok: false, saida: e.message }));
-    proc.on('close', code => res({ ok: code === 0, saida: [...linhas, resto].filter(Boolean).slice(-200).join('\n') }));
+    proc.on('close', code => { testePid = 0; res({ ok: code === 0, saida: [...linhas, resto].filter(Boolean).slice(-200).join('\n') }); });
   });
 }
 const NOTA = { pronto: ['✓', 'pronto para revisar'], falhou: ['✗', 'falhou'], parado: ['⏸', 'parado'] };
@@ -147,10 +155,18 @@ function api() {
   return {
     name: 'api-planejador',
     configureServer(server) {
+      // o Vite novo roda configureServer ANTES do close do antigo e o filho claude não morre com ele: estado global para encerrar o antigo
+      const g = (globalThis.__filaPlanejador ??= {});
+      clearInterval(g.timer); g.encerrar?.('o Planejador reiniciou');
       const executor = criarExecutor({ projetos, lerQuadro: p => ler(textoQuadro(p)), gravarQuadro, rodarAgente: rodarExecutor, rodarTestes: rodarTestesFila, notificar: notificarExecucao, dir: DIR });
       executor.recuperar();
-      const timer = setInterval(() => executor.tick(), 5000);
-      server.httpServer?.on('close', () => clearInterval(timer)); // o Vite reinicia ao mudar este arquivo: sem isso sobram dois executores
+      g.timer = setInterval(() => executor.tick(), 5000);
+      g.encerrar = motivo => { const a = executor.estado(); if (a) executor.parar(a.projeto.id, a.id, motivo); };
+      if (!g.saida) {
+        g.saida = true;
+        process.once('exit', () => g.encerrar?.('o Planejador foi fechado')); // síncrono: só o taskkill
+        for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { g.encerrar?.('o Planejador foi fechado'); process.exit(); });
+      }
       server.middlewares.use('/api', async (req, res) => {
         try {
           const url = new URL(req.url, 'http://x'), rota = url.pathname, pid = url.searchParams.get('p');
@@ -182,9 +198,13 @@ function api() {
           }
           if (req.method === 'POST' && ['/execucao/parar', '/execucao/aceitar', '/execucao/ajustar', '/execucao/descartar'].includes(rota)) {
             const b = await corpo(req), acao = rota.split('/').pop();
+            if (!projetos().some(x => x.id === b.projeto)) return json(res, 404, { erro: 'sistema não encontrado' });
+            if (acao !== 'parar' && !ler(textoQuadro(projeto(b.projeto))).colunas.some(c => c.cartoes.some(x => x.id === b.id))) return json(res, 200, { ok: false, motivo: 'cartão não encontrado' });
+            if (acao === 'ajustar' && !String(b.texto || '').trim()) return json(res, 400, { erro: 'texto do ajuste vazio' });
             if (acao === 'aceitar') return json(res, 200, executor.aceitar(b.projeto, b.id));
             if (acao === 'ajustar') return json(res, 200, executor.ajustar(b.projeto, b.id, b.texto));
-            if (acao === 'descartar') executor.descartar(b.projeto, b.id); else executor.parar(b.projeto, b.id, 'parado pelo usuário');
+            if (acao === 'parar') return json(res, 200, executor.parar(b.projeto, b.id, 'parado pelo usuário'));
+            executor.descartar(b.projeto, b.id);
             return json(res, 200, { ok: true });
           }
           if (req.method === 'GET' && rota === '/rumo') {
