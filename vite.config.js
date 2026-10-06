@@ -9,15 +9,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ler, escrever, mover, salvar, excluir } from './quadro.mjs';
+import { criarExecutor } from './executor.mjs';
+import { podeExecutar } from './fila.mjs';
+import { temGit } from './git.mjs';
+import { notificarWindows } from './notificar.mjs';
 
 const DIR = fileURLToPath(new URL('.', import.meta.url));
 const CLAUDE = process.env.CLAUDE_BIN || [join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')].find(existsSync) || 'claude';
 const FERRAMENTAS = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git branch:*)', 'Bash(git rev-list:*)',
   'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(npm test:*)', 'Bash(npm run check:*)', 'Bash(mkdir:*)'];
+const FERRAMENTAS_EXECUTOR = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)',
+  'Bash(npm test:*)', 'Bash(npm run:*)', 'Bash(mkdir:*)'];
 
 const projetos = () => JSON.parse(readFileSync(join(DIR, 'projetos.json'), 'utf8'));
 const projeto = id => { const p = projetos().find(x => x.id === id); if (!p) throw new Error(`sistema ${id} não está no projetos.json`); return p; };
@@ -37,10 +43,19 @@ function proximo(p) {
 }
 
 // o agente vem do arquivo agente/planejador.md (frontmatter + instruções), passado ao claude por --agents
-function definicaoAgente() {
-  const txt = readFileSync(join(DIR, 'agente', 'planejador.md'), 'utf8'), m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(txt.replace(/\r\n/g, '\n'));
+function definicaoAgente(nome) {
+  const txt = readFileSync(join(DIR, 'agente', nome + '.md'), 'utf8'), m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(txt.replace(/\r\n/g, '\n'));
   const meta = Object.fromEntries(m[1].split('\n').map(l => [l.slice(0, l.indexOf(':')).trim(), l.slice(l.indexOf(':') + 1).trim()]));
-  return { planejador: { description: meta.description, tools: meta.tools.split(',').map(s => s.trim()), prompt: m[2].trim() } };
+  return { [nome]: { description: meta.description, tools: meta.tools.split(',').map(s => s.trim()), prompt: m[2].trim() } };
+}
+
+// stream-json do claude: uma mensagem JSON por linha
+function lerStream(proc, aoMensagem) {
+  let resto = '';
+  proc.stdout.on('data', d => {
+    const linhas = (resto + d).split('\n'); resto = linhas.pop();
+    for (const l of linhas) { let m; try { m = JSON.parse(l); } catch { continue; } aoMensagem(m); }
+  });
 }
 
 const rodadas = new Map(); // id do sistema -> estado da rodada
@@ -53,25 +68,65 @@ function rodarAgente(p) {
   const pedido = `Rodada de planejamento do sistema "${p.nome}" (a pasta atual). Quadro: ${arqQuadro(p)}. Rumo: ${arqRumo(p)}. `
     + 'Siga as suas instruções: leia o quadro e as fontes do sistema, acrescente na coluna Entrada só sugestões novas e importantes, e reescreva o rumo.';
   passo(`Planejador iniciado em ${p.nome}`);
-  const proc = spawn(CLAUDE, ['-p', pedido, '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente()), '--add-dir', DIR,
+  const proc = spawn(CLAUDE, ['-p', pedido, '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente('planejador')), '--add-dir', DIR,
     '--permission-mode', 'acceptEdits', '--allowedTools', ...FERRAMENTAS, '--output-format', 'stream-json', '--verbose'],
   { cwd: p.pasta, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  let resto = '';
-  proc.stdout.on('data', d => {
-    const linhas = (resto + d).split('\n'); resto = linhas.pop();
-    for (const l of linhas) {
-      let m; try { m = JSON.parse(l); } catch { continue; }
-      if (m.type === 'assistant') for (const c of m.message?.content || []) {
-        if (c.type === 'tool_use') { const i = c.input || {}; passo(`${c.name}${i.file_path ? ' ' + i.file_path.replaceAll('\\', '/').replace(p.pasta.replaceAll('\\', '/') + '/', '') : i.pattern ? ' "' + i.pattern + '"' : i.command ? ' ' + i.command : ''}`); }
-        else if (c.type === 'text' && c.text.trim()) passo(c.text.trim().split('\n')[0].slice(0, 160));
-      }
-      if (m.type === 'result') { e.resumo = m.result || ''; e.ok = !m.is_error; }
+  lerStream(proc, m => {
+    if (m.type === 'assistant') for (const c of m.message?.content || []) {
+      if (c.type === 'tool_use') { const i = c.input || {}; passo(`${c.name}${i.file_path ? ' ' + i.file_path.replaceAll('\\', '/').replace(p.pasta.replaceAll('\\', '/') + '/', '') : i.pattern ? ' "' + i.pattern + '"' : i.command ? ' ' + i.command : ''}`); }
+      else if (c.type === 'text' && c.text.trim()) passo(c.text.trim().split('\n')[0].slice(0, 160));
     }
+    if (m.type === 'result') { e.resumo = m.result || ''; e.ok = !m.is_error; }
   });
   proc.stderr.on('data', d => passo('erro: ' + String(d).trim().slice(0, 200)));
   proc.on('error', err => { passo('não consegui rodar o claude: ' + err.message); e.ok = false; });
   proc.on('close', code => { e.rodando = false; e.fim = Date.now(); if (e.ok == null) e.ok = code === 0; passo(e.ok ? 'Concluído' : `Terminou com erro (código ${code})`); });
 }
+
+// --- executor da Fila ---
+const nomeArq = f => String(f || '').replaceAll('\\', '/').split('/').pop();
+function textoPasso(c) {
+  const i = c.input || {};
+  switch (c.name) {
+    case 'Edit': case 'MultiEdit': return `editando ${nomeArq(i.file_path)}`;
+    case 'Write': return `escrevendo ${nomeArq(i.file_path)}`;
+    case 'Read': return `lendo ${nomeArq(i.file_path)}`;
+    case 'Grep': case 'Glob': return `procurando ${i.pattern || ''}`.trim();
+    case 'Bash': return `rodando ${String(i.command || '').split('\n')[0].slice(0, 80)}`;
+    default: return c.name;
+  }
+}
+function rodarExecutor({ copia, pedido, onPasso }) {
+  const falso = process.env.PLANEJADOR_AGENTE_FALSO === '1';
+  const proc = falso ? spawn('node', [join(DIR, 'teste', 'agente-falso.mjs'), copia, 'ok'], { windowsHide: true, stdio: 'ignore' })
+    : spawn(CLAUDE, ['-p', pedido, '--agent', 'executor', '--agents', JSON.stringify(definicaoAgente('executor')), '--permission-mode', 'acceptEdits', '--max-turns', '80',
+      '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let resumo = '', ok = null;
+  if (!falso) {
+    lerStream(proc, m => {
+      if (m.type === 'assistant') for (const c of m.message?.content || []) if (c.type === 'tool_use') onPasso(textoPasso(c));
+      if (m.type === 'result') { resumo = m.result || ''; ok = !m.is_error; }
+    });
+    proc.stderr.on('data', d => { if (ok == null) resumo = (resumo + ' ' + String(d).trim()).trim().slice(0, 300); });
+  }
+  const pronto = new Promise(res => {
+    proc.on('error', err => res({ ok: false, resumo: 'não consegui rodar o agente: ' + err.message }));
+    proc.on('close', code => res({ ok: ok ?? code === 0, resumo }));
+  });
+  return { pronto, matar: () => { try { spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true }); } catch {} } };
+}
+function rodarTestesFila({ copia, comando }) {
+  return new Promise(res => {
+    const proc = spawn(comando, { cwd: copia, shell: true, windowsHide: true });
+    let linhas = [], resto = '';
+    const junta = d => { const l = (resto + d).split('\n'); resto = l.pop(); linhas.push(...l); if (linhas.length > 200) linhas = linhas.slice(-200); };
+    proc.stdout.on('data', junta); proc.stderr.on('data', junta);
+    proc.on('error', e => res({ ok: false, saida: e.message }));
+    proc.on('close', code => res({ ok: code === 0, saida: [...linhas, resto].filter(Boolean).slice(-200).join('\n') }));
+  });
+}
+const NOTA = { pronto: ['✓', 'pronto para revisar'], falhou: ['✗', 'falhou'], parado: ['⏸', 'parado'] };
+const notificarExecucao = ({ projeto: p, cartao, status }) => { const [s, m] = NOTA[status] || ['', status]; notificarWindows({ titulo: `${s} ${cartao.titulo}: ${m}`.trim(), texto: p.nome }); };
 
 function lerQuadro(id) {
   if (id !== 'todos') { const p = projeto(id); return { ...ler(textoQuadro(p)), mtime: mtime(arqQuadro(p)), projeto: id }; }
@@ -92,6 +147,10 @@ function api() {
   return {
     name: 'api-planejador',
     configureServer(server) {
+      const executor = criarExecutor({ projetos, lerQuadro: p => ler(textoQuadro(p)), gravarQuadro, rodarAgente: rodarExecutor, rodarTestes: rodarTestesFila, notificar: notificarExecucao, dir: DIR });
+      executor.recuperar();
+      const timer = setInterval(() => executor.tick(), 5000);
+      server.httpServer?.on('close', () => clearInterval(timer)); // o Vite reinicia ao mudar este arquivo: sem isso sobram dois executores
       server.middlewares.use('/api', async (req, res) => {
         try {
           const url = new URL(req.url, 'http://x'), rota = url.pathname, pid = url.searchParams.get('p');
@@ -105,12 +164,28 @@ function api() {
           if (req.method === 'GET' && rota === '/quadro') return json(res, 200, lerQuadro(pid || 'todos'));
           if (req.method === 'POST' && ['/mover', '/salvar', '/excluir'].includes(rota)) {
             const b = await corpo(req), p = projeto(b.projeto), q = ler(textoQuadro(p));
+            if (rota === '/mover' && b.coluna === 'Fila') {
+              const c = q.colunas.flatMap(x => x.cartoes).find(x => x.id === b.id), r = c && podeExecutar(c, { temGit: temGit(p.pasta) });
+              if (r && !r.ok) return json(res, 400, { erro: r.motivo });
+            }
             let novo = rota === '/mover' ? mover(q, b.id, b.coluna, b.posicao) : rota === '/salvar' ? salvar(q, b) : excluir(q, b.id);
             // editar trocando a coluna = mover o cartão para o fim da coluna nova
             const atual = rota === '/salvar' && b.id && q.colunas.find(c => c.cartoes.some(x => x.id === b.id))?.nome;
             if (atual && b.coluna && b.coluna !== atual) novo = mover(novo, b.id, b.coluna);
             gravarQuadro(p, novo);
             return json(res, 200, lerQuadro(pid || b.projeto));
+          }
+          if (req.method === 'GET' && rota === '/execucao') return json(res, 200, executor.estado());
+          if (req.method === 'GET' && rota === '/execucao/historico') {
+            const h = executor.historico(pid, url.searchParams.get('id'));
+            return h ? json(res, 200, h) : json(res, 404, { erro: 'sem histórico para este cartão' });
+          }
+          if (req.method === 'POST' && ['/execucao/parar', '/execucao/aceitar', '/execucao/ajustar', '/execucao/descartar'].includes(rota)) {
+            const b = await corpo(req), acao = rota.split('/').pop();
+            if (acao === 'aceitar') return json(res, 200, executor.aceitar(b.projeto, b.id));
+            if (acao === 'ajustar') return json(res, 200, executor.ajustar(b.projeto, b.id, b.texto));
+            if (acao === 'descartar') executor.descartar(b.projeto, b.id); else executor.parar(b.projeto, b.id, 'parado pelo usuário');
+            return json(res, 200, { ok: true });
           }
           if (req.method === 'GET' && rota === '/rumo') {
             const p = projeto(pid), f = arqRumo(p);
@@ -130,4 +205,4 @@ function api() {
   };
 }
 
-export default defineConfig({ plugins: [react(), api()], server: { port: 5180, strictPort: true, host: 'localhost' } });
+export default defineConfig({ plugins: [react(), api()], server: { port: 5180, strictPort: true, host: 'localhost', watch: { ignored: ['**/worktrees/**', '**/execucoes/**'] } } });
