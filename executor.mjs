@@ -7,6 +7,7 @@ import { proximo, marcar, comandoTestes } from './fila.mjs';
 import * as git from './git.mjs';
 
 const dataBR = ms => { const d = new Date(ms); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const isoLocal = ms => { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
 const achar = (q, id) => q.colunas.flatMap(c => c.cartoes).find(c => c.id === id);
 
 export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, rodarTestes, notificar = () => {}, agora = Date.now, dir, limiteMs = 30 * 60 * 1000 }) {
@@ -28,6 +29,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     h.rodadas.push(rodada);
     gravarHist(pid, h);
   };
+  const limparBase = (pid, id) => { const h = historico(pid, id); if (h) { delete h.base; gravarHist(pid, h); } }; // a próxima ida à Fila parte da base nova
   const rodadaVazia = (a, status, resumo) => ({ inicio: a.inicio, fim: agora(), status, resumo, passos: a.passos || [], testes: { ok: false, saida: '' }, arquivos: [], diff: '' });
   const revisar = (p, id, status) => alterar(p, q => marcar(mover(q, id, 'Revisar'), id, { exec: status }));
   const cartaoDe = a => ({ id: a.id, titulo: a.titulo });
@@ -54,10 +56,11 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     a.testando = true; // o tick não aplica limite nem Postergar enquanto o Planejador roda os testes
     let status, rodada, postergado = false;
     try {
+      const sujo = git.sujo(a.copia); // antes dos testes: eles podem gerar arquivos
       const testes = await rodarTestes({ copia: a.copia, comando: comandoTestes(lerQuadro(a.projeto).cabecalho) });
       if (atual?.token !== a.token) return;
       const al = git.alteracoes({ copia: a.copia, base: a.base, ramo: a.ramo });
-      const motivo = !r.ok ? 'o agente falhou' : !testes.ok ? 'testes falharam' : al.commits === 0 ? 'nenhum commit no ramo' : null;
+      const motivo = !r.ok ? 'o agente falhou' : !testes.ok ? 'testes falharam' : sujo ? 'alterações sem commit na cópia' : al.commits === 0 ? 'nenhum commit no ramo' : null;
       status = motivo ? 'falhou' : 'pronto';
       const c = achar(lerQuadro(a.projeto), a.id);
       if (!c || c.coluna !== 'Fazendo') { postergado = true; status = 'parado'; }
@@ -93,7 +96,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     try { ({ copia, base } = git.prepararCopia({ pasta: p.pasta, id: c.id, dirCopias: dirCopias(p.id) })); } catch (e) { return falhar(e); }
     const hist = historico(p.id, c.id);
     base = hist?.base || base;
-    try { alterar(p, q => marcar(mover(q, c.id, 'Fazendo'), c.id, { exec: 'rodando', ramo, inicio: t0 })); } catch (e) { return falhar(e, base); }
+    try { alterar(p, q => marcar(mover(q, c.id, 'Fazendo'), c.id, { exec: 'rodando', ramo, inicio: isoLocal(t0) })); } catch (e) { return falhar(e, base); }
     const a = atual = { projeto: p, id: c.id, titulo: c.titulo, inicio: t0, passo: '', passos: [], token: ++seq, copia, ramo, base, matar() {} };
     const pedido = [c.titulo, c.corpo].filter(Boolean).join('\n\n'); // o último ajuste já está no corpo
     try {
@@ -129,6 +132,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     const rel = p.quadro && (path.isAbsolute(p.quadro) ? path.relative(p.pasta, p.quadro) : p.quadro).replace(/\\/g, '/');
     const r = git.aceitar({ pasta: p.pasta, ramo: ramoDe(id), copia: copiaDe(pid, id), ignorar: rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : undefined });
     if (r.ok) {
+      try { limparBase(pid, id); } catch {}
       const ramo = ramoDe(id), d = dataBR(agora());
       alterar(p, q => {
         q = marcar(mover(q, id, 'Feito'), id, { exec: null, ramo: null, inicio: null });
@@ -158,6 +162,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     const p = proj(pid);
     if (atual?.projeto.id === pid && atual.id === id) parar(pid, id, 'descartado');
     git.descartar({ pasta: p.pasta, ramo: ramoDe(id), copia: copiaDe(pid, id) });
+    try { limparBase(pid, id); } catch {}
     alterar(p, q => marcar(mover(q, id, 'A fazer'), id, { exec: null, ramo: null, inicio: null }));
   }
 
@@ -165,8 +170,8 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     for (const p of projetos()) {
       for (const c of lerQuadro(p).colunas.flatMap(col => col.cartoes)) {
         if (c.outros.exec !== 'rodando') continue;
-        const a = { id: c.id, titulo: c.titulo, ramo: c.outros.ramo, inicio: Number(c.outros.inicio) || agora() };
-        try { registrar(p.id, a, rodadaVazia(a, 'parado', 'o Planejador reiniciou no meio da execução')); alterar(p, q => marcar(c.coluna === 'Fazendo' ? mover(q, c.id, 'Revisar') : q, c.id, { exec: 'parado' })); } catch {}
+        const a = { id: c.id, titulo: c.titulo, ramo: c.outros.ramo, copia: copiaDe(p.id, c.id), base: historico(p.id, c.id)?.base, inicio: Date.parse(c.outros.inicio) || agora() };
+        try { registrar(p.id, a, { ...rodadaVazia(a, 'parado', 'o Planejador reiniciou no meio da execução'), ...feito(a) }); alterar(p, q => marcar(c.coluna === 'Fazendo' ? mover(q, c.id, 'Revisar') : q, c.id, { exec: 'parado' })); } catch {}
         try { notificar({ projeto: p, cartao: { id: c.id, titulo: c.titulo }, status: 'parado' }); } catch {}
       }
     }

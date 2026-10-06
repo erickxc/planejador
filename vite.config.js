@@ -97,13 +97,15 @@ function textoPasso(c) {
     default: return c.name;
   }
 }
+// o executor herda as permissões do usuário: o que sai da cópia (rede, push, instalação) fica proibido
+const BLOQUEADAS_EXECUTOR = ['Bash(git push:*)', 'Bash(git merge:*)', 'Bash(git remote:*)', 'Bash(gh:*)', 'Bash(curl:*)', 'Bash(wget:*)', 'Bash(npm install:*)', 'Bash(npm i:*)', 'Bash(npx:*)', 'WebFetch', 'WebSearch'];
 let testePid = 0; // processo de testes da Fila em andamento (é um por vez)
 const matarArvore = pid => { if (pid) try { spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }); } catch {} };
 function rodarExecutor({ copia, pedido, projeto: p, onPasso }) {
   const falso = process.env.PLANEJADOR_AGENTE_FALSO === '1';
   const proc = falso ? spawn('node', [join(DIR, 'teste', 'agente-falso.mjs'), copia, 'ok'], { windowsHide: true, stdio: 'ignore' })
     : spawn(CLAUDE, ['-p', '--agent', 'executor', '--agents', JSON.stringify(definicaoAgente('executor')), '--permission-mode', 'acceptEdits', '--max-turns', '80',
-      '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--disallowedTools', ...BLOQUEADAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   if (!falso) { // pedido por stdin: não vira argumento nem é lido como opção
     const regras = ler(textoQuadro(p)).cabecalho.trim();
     proc.stdin.on('error', () => {}); proc.stderr.setEncoding('utf8');
@@ -117,11 +119,13 @@ function rodarExecutor({ copia, pedido, projeto: p, onPasso }) {
     });
     proc.stderr.on('data', d => { if (ok == null) resumo = (resumo + ' ' + String(d).trim()).trim().slice(0, 300); });
   }
+  let vivo = true; // o PID de um processo que já saiu pode ter sido reaproveitado
+  proc.on('exit', () => { vivo = false; });
   const pronto = new Promise(res => {
     proc.on('error', err => res({ ok: false, resumo: 'não consegui rodar o agente: ' + err.message }));
     proc.on('close', code => res({ ok: ok ?? code === 0, resumo }));
   });
-  return { pronto, matar: () => { matarArvore(proc.pid); matarArvore(testePid); } };
+  return { pronto, matar: () => { if (vivo) matarArvore(proc.pid); matarArvore(testePid); } };
 }
 function rodarTestesFila({ copia, comando }) {
   return new Promise(res => {
@@ -166,7 +170,7 @@ function api() {
       if (!g.saida) {
         g.saida = true;
         process.once('exit', () => g.encerrar?.('o Planejador foi fechado')); // síncrono: só o taskkill
-        for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { g.encerrar?.('o Planejador foi fechado'); process.exit(); });
+        for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(sig, () => { g.encerrar?.('o Planejador foi fechado'); process.exit(); });
       }
       server.middlewares.use('/api', async (req, res) => {
         try {

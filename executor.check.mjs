@@ -70,6 +70,13 @@ try {
   assert.strictEqual(cartao('n').outros.exec, 'falhou');
   assert.match(ex.historico('sis', 'n').rodadas[0].resumo, /nenhum commit/);
 
+  // árvore suja na cópia: falha mesmo com commit
+  modos.s = 'sujo';
+  gravarMd(cartaoMd('s', 'Fila'));
+  await rodar(ex);
+  assert.strictEqual(cartao('s').outros.exec, 'falhou');
+  assert.match(ex.historico('sis', 's').rodadas[0].resumo, /sem commit na cópia/);
+
   // erro em rodarAgente: falha e deixa o executor livre
   gravarMd(cartaoMd('e', 'Fila'));
   await novo({ rodarAgente: () => { throw new Error('boom'); } }).tick();
@@ -187,6 +194,19 @@ try {
   assert.strictEqual(cartao('de').coluna, 'A fazer');
   assert.strictEqual(cartao('de').outros.exec, undefined);
   assert.strictEqual(ramo('de'), '');
+
+  // base nova depois de descartar: o commit novo no sistema entra na base e o agente `nada` não tem commits
+  gravarMd(cartaoMd('bn', 'Fila'));
+  await rodar(ex);
+  ex.descartar('sis', 'bn');
+  assert.strictEqual(ex.historico('sis', 'bn').base, undefined);
+  fs.writeFileSync(path.join(pasta, 'b.txt'), 'b'); g(pasta, 'add', 'b.txt'); g(pasta, 'commit', '-qm', 'novo no sistema');
+  modos.bn = 'nada';
+  fs.writeFileSync(arqQuadro, escrever(mover(quadro(), 'bn', 'Fila')));
+  await rodar(ex);
+  assert.strictEqual(cartao('bn').outros.exec, 'falhou');
+  assert.match(ex.historico('sis', 'bn').rodadas.at(-1).resumo, /nenhum commit/);
+  assert.match(String(cartao('bn').outros.inicio), /^\d{4}-\d\d-\d\dT\d\d:\d\d$/);
 
   console.log('ok executor: ciclo, falha, postergar, tempo, um por vez, recuperar, aceitar/ajustar/descartar');
 } finally {

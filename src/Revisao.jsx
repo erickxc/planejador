@@ -65,7 +65,7 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
             <button className="perigo" disabled={ocupado} onClick={() => confirm(`Descartar "${c.titulo}"? O trabalho do agente será apagado.`) && enviar('descartar')}><Trash2 size={15} />Descartar</button>
             <span />
             <button className="sec" disabled={ocupado} onClick={() => setAjuste('')}><MessageSquarePlus size={15} />Pedir ajuste</button>
-            {r && <button className="pri" disabled={ocupado} onClick={() => enviar('aceitar')}><Check size={15} />Aceitar</button>}
+            {r && r.commits !== 0 && <button className="pri" disabled={ocupado} onClick={() => enviar('aceitar')}><Check size={15} />Aceitar</button>}
           </div>
         ) : (
           <form className="edicao" onSubmit={e => { e.preventDefault(); enviar('ajustar', ajuste.trim()); }}>
