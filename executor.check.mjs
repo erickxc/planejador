@@ -91,6 +91,7 @@ try {
   assert.strictEqual(cartao('l').outros.exec, 'parado');
   assert.strictEqual(ex.historico('sis', 'l').rodadas.length, 1);
   assert.ok(ramo('l'));
+  assert.strictEqual(ex.historico('sis', 'l').rodadas[0].commits, 0);
 
   // tempo esgotado
   modos.t = 'lento';
@@ -101,8 +102,31 @@ try {
   await ext.tick();
   assert.strictEqual(ext.estado(), null);
   await new Promise(r => setTimeout(r, 100));
+  assert.strictEqual(cartao('t').coluna, 'Revisar');
   assert.strictEqual(cartao('t').outros.exec, 'parado');
   assert.match(ext.historico('sis', 't').rodadas[0].resumo, /tempo esgotado/);
+  assert.strictEqual(ext.historico('sis', 't').rodadas[0].commits, 0);
+  assert.ok(notas.some(n => n.status === 'parado' && n.cartao.id === 't' && !('projeto' in n.cartao)));
+
+  // testes em andamento: sem limite de tempo; Postergar durante os testes deixa o cartão onde está
+  let liberar; const testesPendentes = new Promise(r => { liberar = r; });
+  gravarMd(cartaoMd('ts', 'Fila'));
+  const ets = novo({ limiteMs: 50, rodarTestes: () => testesPendentes });
+  await ets.tick();
+  await esperar(() => procs.at(-1).fechou);
+  await new Promise(r => setTimeout(r, 300));
+  await ets.tick();
+  assert.strictEqual(ets.estado()?.id, 'ts');
+  assert.strictEqual(cartao('ts').coluna, 'Fazendo');
+  fs.writeFileSync(arqQuadro, escrever(mover(quadro(), 'ts', 'Postergar')));
+  await ets.tick();
+  assert.strictEqual(ets.estado()?.id, 'ts');
+  liberar({ ok: true, saida: 'ok' });
+  await esperar(() => ets.estado() === null);
+  assert.strictEqual(cartao('ts').coluna, 'Postergar');
+  assert.strictEqual(cartao('ts').outros.exec, 'parado');
+  const rts = ets.historico('sis', 'ts').rodadas;
+  assert.deepStrictEqual([rts.length, rts[0].status, rts[0].testes.ok, rts[0].commits], [1, 'parado', true, 1]);
 
   // um por vez
   modos.d1 = modos.d2 = 'lento';
@@ -121,6 +145,16 @@ try {
   assert.strictEqual(cartao('r').coluna, 'Revisar');
   assert.strictEqual(cartao('r').outros.exec, 'parado');
   assert.match(novo().historico('sis', 'r').rodadas[0].resumo, /reiniciou/);
+  // recuperar: cartão fora de Fazendo fica onde está, e o histórico anterior é preservado
+  gravarMd(cartaoMd('l', 'Postergar', ' · exec: rodando · ramo: fila/l'));
+  const nn = notas.length;
+  novo().recuperar();
+  assert.strictEqual(cartao('l').coluna, 'Postergar');
+  assert.strictEqual(cartao('l').outros.exec, 'parado');
+  assert.strictEqual(novo().historico('sis', 'l').rodadas.length, 2);
+  assert.strictEqual(notas.length, nn + 1);
+  assert.deepStrictEqual(ex.aceitar('sis', 'inexistente'), { ok: false, motivo: 'cartão não encontrado' });
+  assert.deepStrictEqual(ex.ajustar('sis', 'inexistente', 'x'), { ok: false, motivo: 'cartão não encontrado' });
 
   // aceitar
   gravarMd(cartaoMd('ac', 'Fila'));
@@ -139,7 +173,7 @@ try {
   assert.strictEqual(cartao('aj').coluna, 'Fila');
   assert.match(cartao('aj').corpo, /Ajuste pedido/);
   await rodar(ex);
-  assert.match(pedidos.filter(p => p.id === 'aj').at(-1).pedido, /trocar o nome/);
+  assert.strictEqual(pedidos.filter(p => p.id === 'aj').at(-1).pedido.split('trocar o nome').length, 2);
   const haj = ex.historico('sis', 'aj');
   assert.strictEqual(haj.rodadas.length, 2);
   assert.strictEqual(haj.base, baseAj);

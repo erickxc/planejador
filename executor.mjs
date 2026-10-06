@@ -30,13 +30,16 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
   };
   const rodadaVazia = (a, status, resumo) => ({ inicio: a.inicio, fim: agora(), status, resumo, passos: a.passos || [], testes: { ok: false, saida: '' }, arquivos: [], diff: '' });
   const revisar = (p, id, status) => alterar(p, q => marcar(mover(q, id, 'Revisar'), id, { exec: status }));
+  const cartaoDe = a => ({ id: a.id, titulo: a.titulo });
+  // o que já está no ramo (vazio se não der para ler)
+  const feito = a => { try { const al = git.alteracoes({ copia: a.copia, base: a.base, ramo: a.ramo }); return { arquivos: al.arquivos, diff: al.diff, commits: al.commits }; } catch { return {}; } };
 
   function parar(pid, id, motivo) {
     if (!atual || atual.projeto.id !== pid || atual.id !== id) return;
     const a = atual; atual = null; // o pronto que resolver depois da morte do processo é ignorado (token)
     try { a.matar(); } catch {}
     try {
-      registrar(pid, a, rodadaVazia(a, 'parado', motivo));
+      registrar(pid, a, { ...rodadaVazia(a, 'parado', motivo), ...feito(a) });
       alterar(a.projeto, q => {
         const c = achar(q, id);
         if (c && c.coluna === 'Fazendo') q = mover(q, id, 'Postergar');
@@ -47,29 +50,43 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
 
   async function terminou(a, r) {
     if (atual?.token !== a.token) return; // já parado
-    let status, rodada;
+    a.testando = true; // o tick não aplica limite nem Postergar enquanto o Planejador roda os testes
+    let status, rodada, postergado = false;
     try {
       const testes = await rodarTestes({ copia: a.copia, comando: comandoTestes(lerQuadro(a.projeto).cabecalho) });
       if (atual?.token !== a.token) return;
       const al = git.alteracoes({ copia: a.copia, base: a.base, ramo: a.ramo });
       const motivo = !r.ok ? 'o agente falhou' : !testes.ok ? 'testes falharam' : al.commits === 0 ? 'nenhum commit no ramo' : null;
       status = motivo ? 'falhou' : 'pronto';
-      const resumo = motivo ? [motivo, r.resumo].filter(Boolean).join(': ') : r.resumo;
+      const c = achar(lerQuadro(a.projeto), a.id);
+      if (!c || c.coluna !== 'Fazendo') { postergado = true; status = 'parado'; }
+      const resumo = postergado ? 'postergado durante os testes' : motivo ? [motivo, r.resumo].filter(Boolean).join(': ') : r.resumo;
       rodada = { inicio: a.inicio, fim: agora(), status, resumo, passos: a.passos, testes: { ok: !!testes.ok, saida: testes.saida }, arquivos: al.arquivos, diff: al.diff, commits: al.commits };
     } catch (e) {
       if (atual?.token !== a.token) return;
       status = 'falhou'; rodada = rodadaVazia(a, status, `erro ao concluir: ${e.message}`);
     }
     atual = null;
-    try { registrar(a.projeto.id, a, rodada); revisar(a.projeto, a.id, status); } catch {}
-    try { notificar({ projeto: a.projeto, cartao: { id: a.id, titulo: a.titulo }, status }); } catch {}
+    try {
+      registrar(a.projeto.id, a, rodada);
+      if (postergado) return alterar(a.projeto, q => marcar(q, a.id, { exec: 'parado' })); // fica onde o usuário pôs
+      revisar(a.projeto, a.id, status);
+    } catch {}
+    try { notificar({ projeto: a.projeto, cartao: cartaoDe(a), status }); } catch {}
+  }
+
+  function tempoEsgotado(a) {
+    atual = null;
+    try { a.matar(); } catch {}
+    try { registrar(a.projeto.id, a, { ...rodadaVazia(a, 'parado', 'tempo esgotado'), ...feito(a) }); revisar(a.projeto, a.id, 'parado'); } catch {}
+    try { notificar({ projeto: a.projeto, cartao: cartaoDe(a), status: 'parado' }); } catch {}
   }
 
   function iniciar(p, c) {
     const t0 = agora(), ramo = ramoDe(c.id);
     const falhar = (e, base) => {
       const a = { id: c.id, titulo: c.titulo, ramo, base, inicio: t0 };
-      try { registrar(p.id, a, rodadaVazia(a, 'falhou', `erro ao iniciar: ${e.message}`)); revisar(p, c.id, 'falhou'); notificar({ projeto: p, cartao: c, status: 'falhou' }); } catch {}
+      try { registrar(p.id, a, rodadaVazia(a, 'falhou', `erro ao iniciar: ${e.message}`)); revisar(p, c.id, 'falhou'); notificar({ projeto: p, cartao: { id: c.id, titulo: c.titulo }, status: 'falhou' }); } catch {}
     };
     let copia, base;
     try { ({ copia, base } = git.prepararCopia({ pasta: p.pasta, id: c.id, dirCopias: dirCopias(p.id) })); } catch (e) { return falhar(e); }
@@ -77,8 +94,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     base = hist?.base || base;
     try { alterar(p, q => marcar(mover(q, c.id, 'Fazendo'), c.id, { exec: 'rodando', ramo, inicio: t0 })); } catch (e) { return falhar(e, base); }
     const a = atual = { projeto: p, id: c.id, titulo: c.titulo, inicio: t0, passo: '', passos: [], token: ++seq, copia, ramo, base, matar() {} };
-    const ajuste = hist?.rodadas.at(-1)?.ajuste;
-    const pedido = [c.titulo, c.corpo, ajuste && `Ajuste pedido: ${ajuste}`].filter(Boolean).join('\n\n');
+    const pedido = [c.titulo, c.corpo].filter(Boolean).join('\n\n'); // o último ajuste já está no corpo
     try {
       const h = rodarAgente({ copia, cartao: c, projeto: p, pedido, onPasso: txt => { if (atual?.token === a.token) { a.passo = txt; a.passos.push(txt); } } });
       a.matar = h.matar;
@@ -92,9 +108,10 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
   async function tick() {
     try {
       if (atual) {
+        if (atual.testando) return;
         const c = achar(lerQuadro(atual.projeto), atual.id);
         if (!c || c.coluna !== 'Fazendo') parar(atual.projeto.id, atual.id, 'postergado');
-        else if (agora() - atual.inicio > limiteMs) parar(atual.projeto.id, atual.id, 'tempo esgotado');
+        else if (agora() - atual.inicio > limiteMs) tempoEsgotado(atual);
         return;
       }
       const ps = projetos();
@@ -106,6 +123,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
 
   function aceitar(pid, id) {
     const p = proj(pid);
+    if (!p || !achar(lerQuadro(p), id)) return { ok: false, motivo: 'cartão não encontrado' };
     if (atual?.projeto.id === pid && atual.id === id) return { ok: false, motivo: 'o cartão está em execução' };
     const r = git.aceitar({ pasta: p.pasta, ramo: ramoDe(id), copia: copiaDe(pid, id) });
     if (r.ok) {
@@ -121,7 +139,9 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
   }
 
   function ajustar(pid, id, texto) {
-    const p = proj(pid), h = historico(pid, id);
+    const p = proj(pid);
+    if (!p || !achar(lerQuadro(p), id)) return { ok: false, motivo: 'cartão não encontrado' };
+    const h = historico(pid, id);
     if (h?.rodadas.length) { h.rodadas.at(-1).ajuste = texto; gravarHist(pid, h); }
     alterar(p, q => {
       q = mover(q, id, 'Fila');
@@ -129,6 +149,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
       c.corpo = `${c.corpo}\n\nAjuste pedido em ${dataBR(agora())}: ${texto}`.trim();
       return q;
     });
+    return { ok: true };
   }
 
   function descartar(pid, id) {
@@ -143,7 +164,8 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
       for (const c of lerQuadro(p).colunas.flatMap(col => col.cartoes)) {
         if (c.outros.exec !== 'rodando') continue;
         const a = { id: c.id, titulo: c.titulo, ramo: c.outros.ramo, inicio: Number(c.outros.inicio) || agora() };
-        try { registrar(p.id, a, rodadaVazia(a, 'parado', 'o Planejador reiniciou no meio da execução')); revisar(p, c.id, 'parado'); } catch {}
+        try { registrar(p.id, a, rodadaVazia(a, 'parado', 'o Planejador reiniciou no meio da execução')); alterar(p, q => marcar(c.coluna === 'Fazendo' ? mover(q, c.id, 'Revisar') : q, c.id, { exec: 'parado' })); } catch {}
+        try { notificar({ projeto: p, cartao: { id: c.id, titulo: c.titulo }, status: 'parado' }); } catch {}
       }
     }
   }
