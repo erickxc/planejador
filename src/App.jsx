@@ -261,17 +261,14 @@ export default function App() {
   useEffect(() => { const t = setInterval(carregarRumo, rumo?.rodada?.rodando ? 1500 : 6000); return () => clearInterval(t); }, [carregarRumo, rumo?.rodada?.rodando]);
   useEffect(() => { if (rumo?.rodada && !rumo.rodada.rodando) { carregar(); carregarSistemas(); } }, [rumo?.rodada?.rodando]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // execução: a cada 2 s enquanto houver, senão a cada 4 s; quando termina, avisa se o cartão foi para Revisar
+  // execução: a cada 2 s enquanto houver, senão a cada 4 s
   const lerExec = useCallback(async () => {
     try {
       const e = await chamar('/api/execucao'), ant = execAnt.current;
       execAnt.current = e; setExecucao(e);
-      if (!ant || (e && e.id === ant.id && idExec(e) === idExec(ant))) return;
-      const q = await chamar('/api/quadro?p=todos'); setQuadro(q);
-      const c = q.colunas.find(x => x.nome === 'Revisar')?.cartoes.find(x => x.id === ant.id && x.projeto === idExec(ant));
-      if (c) avisar(c, setRevisando);
+      if (ant && !(e && e.id === ant.id && idExec(e) === idExec(ant))) carregar(); // terminou: o cartão já mudou de coluna
     } catch { /* o servidor reinicia: tenta de novo no próximo ciclo */ }
-  }, []);
+  }, [carregar]);
   useEffect(() => { lerExec(); const t = setInterval(lerExec, execucao ? 2000 : 4000); return () => clearInterval(t); }, [lerExec, !!execucao]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { // a permissão só pode ser pedida num gesto do usuário: o primeiro clique na página
     if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
@@ -282,6 +279,14 @@ export default function App() {
   const naoVistos = (quadro?.colunas.find(x => x.nome === 'Revisar')?.cartoes || []).filter(c => c.outros?.exec && !vistos.includes(chave(c))).length;
   useEffect(() => { document.title = naoVistos ? `(${naoVistos}) Planejador` : 'Planejador · 2D TRANSFER'; }, [naoVistos]);
   const abrirRevisao = c => { setRevisando(c); const k = chave(c); setVistos(v => { const n = v.includes(k) ? v : [...v.slice(-99), k]; lembrar('planejador:vistos', n); return n; }); };
+  // avisa de todo cartão novo em Revisar (de qualquer origem); o que já estava lá ao abrir a página não avisa
+  const avisados = useRef(null);
+  useEffect(() => {
+    if (!quadro) return;
+    const rev = (quadro.colunas.find(x => x.nome === 'Revisar')?.cartoes || []).filter(c => c.outros?.exec);
+    if (!avisados.current) { avisados.current = new Set(rev.map(chave)); return; }
+    for (const c of rev) if (!avisados.current.has(chave(c))) { avisados.current.add(chave(c)); avisar(c, abrirRevisao); }
+  }, [quadro]); // eslint-disable-line react-hooks/exhaustive-deps
   const abrir = c => (c.coluna === 'Revisar' ? abrirRevisao(c) : setAberto(c));
   const parar = c => chamar('/api/execucao/parar', { projeto: c.projeto, id: c.id }).then(() => carregar(), e => setErro(e.message));
 

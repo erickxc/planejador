@@ -126,7 +126,8 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
     const p = proj(pid);
     if (!p || !achar(lerQuadro(p), id)) return { ok: false, motivo: 'cartão não encontrado' };
     if (atual?.projeto.id === pid && atual.id === id) return { ok: false, motivo: 'o cartão está em execução' };
-    const r = git.aceitar({ pasta: p.pasta, ramo: ramoDe(id), copia: copiaDe(pid, id) });
+    const rel = p.quadro && (path.isAbsolute(p.quadro) ? path.relative(p.pasta, p.quadro) : p.quadro).replace(/\\/g, '/');
+    const r = git.aceitar({ pasta: p.pasta, ramo: ramoDe(id), copia: copiaDe(pid, id), ignorar: rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : undefined });
     if (r.ok) {
       const ramo = ramoDe(id), d = dataBR(agora());
       alterar(p, q => {

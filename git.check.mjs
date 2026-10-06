@@ -49,6 +49,16 @@ try {
   assert.ok(fs.existsSync(path.join(pasta, 'node_modules/x.txt')));
   assert.ok(fs.existsSync(path.join(pasta, 'app/node_modules/y.txt')));
 
+  // quadro versionado e modificado: não bloqueia o aceitar
+  w(path.join(pasta, 'quadro.md'), 'v1\n'); g(pasta, 'add', 'quadro.md'); g(pasta, 'commit', '-qm', 'quadro');
+  const qd = prepararCopia({ pasta, id: 'tq', dirCopias });
+  w(path.join(qd.copia, 'novo.txt'), 'n\n'); g(qd.copia, 'add', '-A'); g(qd.copia, 'commit', '-qm', 'copia');
+  w(path.join(pasta, 'quadro.md'), 'v2 movido\n');
+  assert.match(aceitar({ pasta, ...qd }).motivo, /sem commit/);
+  assert.deepStrictEqual(aceitar({ pasta, ...qd, ignorar: 'quadro.md' }), { ok: true });
+  assert.strictEqual(fs.readFileSync(path.join(pasta, 'quadro.md'), 'utf8'), 'v2 movido\n');
+  g(pasta, 'commit', '-qam', 'quadro movido');
+
   // conflito
   const c = prepararCopia({ pasta, id: 't2', dirCopias });
   w(path.join(c.copia, 'a.txt'), 'da copia\n'); g(c.copia, 'commit', '-qam', 'copia');

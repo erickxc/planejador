@@ -14,7 +14,7 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
     chamar(`/api/execucao/historico?p=${encodeURIComponent(c.projeto)}&id=${encodeURIComponent(c.id)}`).then(j => vivo && setH(j), e => vivo && setErro(e.message));
     return () => { vivo = false; };
   }, [c.projeto, c.id, chamar]);
-  useEffect(() => { const esc = e => e.key === 'Escape' && onFechar(); addEventListener('keydown', esc); return () => removeEventListener('keydown', esc); }, [onFechar]);
+  useEffect(() => { const esc = e => e.key === 'Escape' && ajuste === null && onFechar(); addEventListener('keydown', esc); return () => removeEventListener('keydown', esc); }, [onFechar, ajuste]);
 
   const enviar = async (acao, texto) => {
     setOcupado(true); setErro('');
@@ -25,7 +25,7 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
     setOcupado(false);
   };
 
-  const r = h?.rodadas.at(-1), saida = (r?.testes?.saida || '').split('\n'), arqs = porArquivo(r?.diff);
+  const r = h?.rodadas?.at(-1), saida = (r?.testes?.saida || '').split('\n'), arqs = porArquivo(r?.diff);
   return (
     <div className="fundo" onClick={onFechar}>
       <aside className="gaveta revisao" onClick={e => e.stopPropagation()} role="dialog" aria-label={'Revisar ' + c.titulo}>
@@ -37,10 +37,11 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
         {h?.ramo && <p className="rev-meta">Ramo <code>{h.ramo}</code></p>}
         {erro && <p className="erro">{erro}</p>}
         {!h && !erro && <p className="rev-meta">Carregando…</p>}
+        {h && !r && <p className="rev-meta">Sem rodada registrada.</p>}
         {r && <>
           <p className={'rev-status ' + r.status}>{r.status}</p>
           <p className="rev-resumo">{r.resumo || 'Sem resumo.'}</p>
-          <p className="rev-meta">{dur(r.fim - r.inicio)} · {r.passos?.length || 0} passos</p>
+          <p className="rev-meta">{r.fim ? dur(r.fim - r.inicio) + ' · ' : ''}{r.passos?.length || 0} passos</p>
           <h4>Testes: <span className={r.testes?.ok ? 'ok' : 'falha'}>{r.testes?.ok ? 'passaram' : 'falharam'}</span></h4>
           {r.testes?.saida && <>
             <pre className="rev-saida">{(tudo ? saida : saida.slice(-20)).join('\n')}</pre>
@@ -54,7 +55,7 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
               <pre>{a.linhas.map((l, i) => <span key={i} className={classeLinha(l)}>{l + '\n'}</span>)}</pre>
             </details>
           ))}
-          {h.rodadas.length > 1 && <>
+          {h.rodadas?.length > 1 && <>
             <h4>Rodadas anteriores</h4>
             <ul className="rev-ant">{h.rodadas.slice(0, -1).reverse().map((x, i) => <li key={i}><b className={x.status}>{x.status}</b> {hora.format(x.inicio)}{x.ajuste ? ` · ajuste: ${x.ajuste}` : ''}</li>)}</ul>
           </>}
@@ -64,7 +65,7 @@ export default function Revisao({ c, chamar, onFechar, onFeito }) {
             <button className="perigo" disabled={ocupado} onClick={() => confirm(`Descartar "${c.titulo}"? O trabalho do agente será apagado.`) && enviar('descartar')}><Trash2 size={15} />Descartar</button>
             <span />
             <button className="sec" disabled={ocupado} onClick={() => setAjuste('')}><MessageSquarePlus size={15} />Pedir ajuste</button>
-            <button className="pri" disabled={ocupado} onClick={() => enviar('aceitar')}><Check size={15} />Aceitar</button>
+            {r && <button className="pri" disabled={ocupado} onClick={() => enviar('aceitar')}><Check size={15} />Aceitar</button>}
           </div>
         ) : (
           <form className="edicao" onSubmit={e => { e.preventDefault(); enviar('ajustar', ajuste.trim()); }}>

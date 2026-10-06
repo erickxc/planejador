@@ -68,13 +68,14 @@ export function descartar({ pasta, ramo, copia }) {
   if (ok(pasta, 'rev-parse', '--verify', '--quiet', `refs/heads/${ramo}`)) git(pasta, 'branch', '-D', ramo);
 }
 
-export function aceitar({ pasta, ramo, copia }) {
-  if (git(pasta, 'status', '--porcelain').trim()) return { ok: false, motivo: 'o ramo atual tem alterações sem commit' };
+// ignorar: caminho do quadro (relativo à pasta); versionado no repositório e regravado a cada movimento, não conta como sujo
+export function aceitar({ pasta, ramo, copia, ignorar }) {
+  if (git(pasta, 'status', '--porcelain', '--', '.', ...(ignorar ? [`:(exclude)${ignorar}`] : [])).trim()) return { ok: false, motivo: 'o ramo atual tem alterações sem commit' };
   try { git(pasta, 'merge', '--no-ff', ramo, '-m', `Fila: ${ramo}`); }
   catch (e) {
     const arqs = git(pasta, 'diff', '--name-only', '--diff-filter=U').trim().split('\n').filter(Boolean);
     ok(pasta, 'merge', '--abort');
-    return { ok: false, motivo: arqs.length ? `conflito ao juntar: ${arqs.join(', ')}` : e.message };
+    return { ok: false, motivo: arqs.length ? `conflito ao juntar: ${arqs.join(', ')}` : `não foi possível juntar: ${e.message.split('\n').filter(Boolean).slice(0, 3).join(' ')}` };
   }
   try { descartar({ pasta, ramo, copia }); } catch (e) { return { ok: true, aviso: e.message }; }
   return { ok: true };
