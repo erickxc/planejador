@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "node quadro.check.mjs && node fila.check.mjs && node git.check.mjs",
+    "check": "node quadro.check.mjs && node fila.check.mjs && node git.check.mjs && node executor.check.mjs",
     "instalar-agente": "node -e \"const f=require('fs'),p=require('path'),d=p.join(require('os').homedir(),'.claude','agents');f.mkdirSync(d,{recursive:true});f.copyFileSync('agente/planejador.md',p.join(d,'planejador.md'));console.log('agente instalado em',d)\""
   },
   "dependencies": {
