@@ -5,7 +5,8 @@
 //   corpo em Markdown    até o próximo ### ou ##
 // O que vem antes da primeira ## é o cabeçalho; texto entre a ## e o 1º ### é a introdução da coluna. ler() + escrever()
 // devolvem o mesmo arquivo (fora espaços em branco nas pontas), então editar pelo quadro não estraga o que foi escrito à mão.
-export const COLUNAS = ['Entrada', 'Decidir', 'A fazer', 'Fazendo', 'Terceiros', 'Feito'];
+export const COLUNAS = ['Entrada', 'Decidir', 'A fazer', 'Fila', 'Fazendo', 'Revisar', 'Postergar', 'Terceiros', 'Feito'];
+export const NOVAS = ['Fila', 'Revisar', 'Postergar'];
 export const PRIORIDADES = ['alta', 'media', 'baixa'];
 export const CATEGORIAS = ['implementacao', 'melhoria', 'ideia', 'plano', 'bug', 'erro', 'problema', 'pesquisa', 'documentacao'];
 
@@ -58,6 +59,7 @@ export function ler(md) {
 export function escrever(q) {
   const out = [q.cabecalho.trim(), ''];
   for (const c of q.colunas) {
+    if (NOVAS.includes(c.nome) && !c.cartoes.length) continue;
     out.push('---', '', `## ${c.nome}`, '');
     if (c.intro?.trim()) out.push(c.intro.trim(), '');
     for (const x of c.cartoes) {
