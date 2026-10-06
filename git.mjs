@@ -60,26 +60,24 @@ function nmRaiz(pasta, copia) {
   }
 }
 // desfaz toda junção node_modules da cópia (sem apagar a origem; rmdir não recursivo)
+// cada entrada no seu próprio try: uma falha não deixa as junções seguintes para o worktree remove
+const lista = p => { try { return fs.readdirSync(p); } catch { return []; } };
+const solta = p => { try { if (ehLink(p)) { fs.rmdirSync(p); return true; } } catch {} return false; };
 export const soltarJuncoes = (dir, nivel = 0) => {
   let ents = [];
   try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const d of ents) {
     const p = path.join(dir, d.name);
     if (d.name === 'node_modules') {
-      try {
-        if (ehLink(p)) fs.rmdirSync(p);
-        else if (nivel === 0) { // raiz real: solta cada junção (e escopos) e remove os diretórios vazios
-          for (const e of fs.readdirSync(p)) {
-            const q = path.join(p, e);
-            if (ehLink(q)) fs.rmdirSync(q);
-            else if (e.startsWith('@')) {
-              for (const s of fs.readdirSync(q)) if (ehLink(path.join(q, s))) fs.rmdirSync(path.join(q, s));
-              try { fs.rmdirSync(q); } catch {}
-            }
-          }
-          try { fs.rmdirSync(p); } catch {}
-        }
-      } catch {}
+      if (solta(p) || nivel !== 0) continue;
+      // raiz real: solta cada junção (e escopos) e remove os diretórios vazios
+      for (const e of lista(p)) {
+        const q = path.join(p, e);
+        if (solta(q) || !e.startsWith('@')) continue;
+        for (const s of lista(q)) solta(path.join(q, s));
+        try { fs.rmdirSync(q); } catch {}
+      }
+      try { fs.rmdirSync(p); } catch {}
     }
     else if (d.name !== '.git' && d.isDirectory() && nivel < 3) soltarJuncoes(p, nivel + 1);
   }
