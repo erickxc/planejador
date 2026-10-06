@@ -70,7 +70,8 @@ function rodarAgente(p) {
   passo(`Planejador iniciado em ${p.nome}`);
   const proc = spawn(CLAUDE, ['-p', '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente('planejador')), '--add-dir', DIR,
     '--permission-mode', 'acceptEdits', '--allowedTools', ...FERRAMENTAS, '--output-format', 'stream-json', '--verbose'],
-  { cwd: p.pasta, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  { cwd: p.pasta, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  proc.stdin.on('error', () => {}); proc.stdin.end(pedido); // pedido por stdin, como no executor
   lerStream(proc, m => {
     if (m.type === 'assistant') for (const c of m.message?.content || []) {
       if (c.type === 'tool_use') { const i = c.input || {}; passo(`${c.name}${i.file_path ? ' ' + i.file_path.replaceAll('\\', '/').replace(p.pasta.replaceAll('\\', '/') + '/', '') : i.pattern ? ' "' + i.pattern + '"' : i.command ? ' ' + i.command : ''}`); }
@@ -101,7 +102,7 @@ const matarArvore = pid => { if (pid) try { spawnSync('taskkill', ['/pid', Strin
 function rodarExecutor({ copia, pedido, projeto: p, onPasso }) {
   const falso = process.env.PLANEJADOR_AGENTE_FALSO === '1';
   const proc = falso ? spawn('node', [join(DIR, 'teste', 'agente-falso.mjs'), copia, 'ok'], { windowsHide: true, stdio: 'ignore' })
-    : spawn(CLAUDE, ['-p', pedido, '--agent', 'executor', '--agents', JSON.stringify(definicaoAgente('executor')), '--permission-mode', 'acceptEdits', '--max-turns', '80',
+    : spawn(CLAUDE, ['-p', '--agent', 'executor', '--agents', JSON.stringify(definicaoAgente('executor')), '--permission-mode', 'acceptEdits', '--max-turns', '80',
       '--allowedTools', ...FERRAMENTAS_EXECUTOR, '--output-format', 'stream-json', '--verbose'], { cwd: copia, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   if (!falso) { // pedido por stdin: não vira argumento nem é lido como opção
     const regras = ler(textoQuadro(p)).cabecalho.trim();
