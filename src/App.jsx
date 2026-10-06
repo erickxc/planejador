@@ -59,7 +59,7 @@ function Previa({ c, pos }) {
   );
 }
 
-function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar }) {
+function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar, onExcluir }) {
   const [sobre, setSobre] = useState(false), [previa, setPrevia] = useState(null), t = useRef(0);
   const resumo = primeiraLinha(c);
   const exec = c.outros?.exec, rodando = execucao && execucao.id === c.id && idExec(execucao) === c.projeto;
@@ -82,6 +82,7 @@ function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar }) {
       onDrop={e => { e.preventDefault(); e.stopPropagation(); setSobre(false); onSoltarAntes(e.dataTransfer.getData('text/plain'), c); }}
       onClick={() => { fechar(); onAbrir(c); }} onKeyDown={e => e.key === 'Enter' && onAbrir(c)}>
       <h3>{semCrase(c.titulo)}</h3>
+      {!rodando && <button className="ic lixo" title="Excluir" aria-label={`Excluir "${c.titulo}"`} onClick={e => { e.stopPropagation(); fechar(); onExcluir(c); }}><Trash2 size={14} /></button>}
       {resumo && <p>{resumo}</p>}
       <Etiquetas c={c} />
       {rodando && <div className="exec-info">
@@ -95,7 +96,7 @@ function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar }) {
   );
 }
 
-function Coluna({ col, cartoes, execucao, onAbrir, onSoltar, onNovo, onParar }) {
+function Coluna({ col, cartoes, execucao, onAbrir, onSoltar, onNovo, onParar, onExcluir }) {
   const [sobre, setSobre] = useState(false);
   return (
     <section className={'coluna ' + classeCol(col.nome) + (sobre ? ' alvo' : '')}
@@ -108,7 +109,7 @@ function Coluna({ col, cartoes, execucao, onAbrir, onSoltar, onNovo, onParar }) 
         <button className="ic mais" title={`Novo cartão em ${col.nome}`} onClick={() => onNovo(col.nome)}><Plus size={16} /></button>
       </header>
       <div className="lista">
-        {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} execucao={execucao} onAbrir={onAbrir} onParar={onParar}
+        {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} execucao={execucao} onAbrir={onAbrir} onParar={onParar} onExcluir={onExcluir}
           onSoltarAntes={(dado, alvo) => onSoltar(dado, col.nome, col.cartoes.filter(x => x.projeto === alvo.projeto).findIndex(x => x.id === alvo.id))} />)}
         {!cartoes.length && <div className="vazia">Arraste um cartão para cá</div>}
       </div>
@@ -129,6 +130,7 @@ function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir }) {
       <aside className="gaveta" onClick={e => e.stopPropagation()} role="dialog" aria-label={c.titulo || 'Novo cartão'}>
         <header>
           <span className={'col-tag ' + classeCol(f.coluna)}><span className="ponto" />{f.coluna}{nomeSistema && <em> · {nomeSistema}</em>}</span>
+          {!ed && <button className="ic" title="Excluir" aria-label="Excluir" onClick={() => onExcluir(c)}><Trash2 size={16} /></button>}
           {!ed && <button className="sec" onClick={() => setEd(true)}><Pencil size={14} />Editar</button>}
           <button className="ic" onClick={onFechar} aria-label="Fechar"><X size={18} /></button>
         </header>
@@ -145,7 +147,7 @@ function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir }) {
             </div>
             <label>Descrição <small>Markdown</small><textarea value={f.corpo || ''} onChange={set('corpo')} rows={18} /></label>
             <div className="acoes">
-              {!novo && <button type="button" className="perigo" onClick={() => confirm(`Excluir "${c.titulo}"?`) && onExcluir(c)}><Trash2 size={15} />Excluir</button>}
+              {!novo && <button type="button" className="perigo" onClick={() => onExcluir(c)}><Trash2 size={15} />Excluir</button>}
               <span />
               <button type="button" className="sec" onClick={() => (novo ? onFechar() : (setF(c), setEd(false)))}>Cancelar</button>
               <button type="submit" className="pri"><Save size={15} />Salvar</button>
@@ -288,6 +290,7 @@ export default function App() {
     for (const c of rev) if (!avisados.current.has(chave(c))) { avisados.current.add(chave(c)); avisar(c, abrirRevisao); }
   }, [quadro]); // eslint-disable-line react-hooks/exhaustive-deps
   const abrir = c => (c.coluna === 'Revisar' ? abrirRevisao(c) : setAberto(c));
+  const excluir = async c => { if (confirm(`Excluir "${c.titulo}"?`) && await acao('/api/excluir', { id: c.id, projeto: c.projeto })) setAberto(null); };
   const parar = c => chamar('/api/execucao/parar', { projeto: c.projeto, id: c.id }).then(() => carregar(), e => setErro(e.message));
 
   const acao = async (url, corpo) => {
@@ -355,7 +358,7 @@ export default function App() {
       <main>
         <div className="quadro">
           {colunas.map(col => (
-            <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={abrir} execucao={execucao} onParar={parar}
+            <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={abrir} execucao={execucao} onParar={parar} onExcluir={excluir}
               onNovo={nome => setAberto({ coluna: nome, titulo: '', corpo: '', projeto: padrao(), categoria: cats.length === 1 ? cats[0] : '' })}
               onSoltar={soltar} />
           ))}
@@ -369,7 +372,7 @@ export default function App() {
         onFeito={aviso => { setRevisando(null); setErro(aviso || ''); carregar(); carregarSistemas(); }} />}
       {aberto && <Gaveta c={aberto} colunas={colunas.map(c => c.nome)} sistemas={sistemas} onFechar={() => setAberto(null)}
         onSalvar={async f => { if (await acao('/api/salvar', f)) setAberto(null); }}
-        onExcluir={async c => { if (await acao('/api/excluir', { id: c.id, projeto: c.projeto })) setAberto(null); }} />}
+        onExcluir={excluir} />}
     </div>
   );
 }

@@ -65,6 +65,11 @@ main { flex: 1; display: flex; min-height: 0; position: relative; }
 
 /* cartões */
 .cartao { display: flex; flex-direction: column; gap: .45rem; padding: .75rem .8rem .7rem; background: var(--surface); border-radius: var(--r-sm); box-shadow: var(--sombra); border: 1px solid transparent; cursor: grab; transition: box-shadow .15s, transform .15s, border-color .15s; }
+/* lixeira: aparece ao passar o mouse (ou com o foco no cartão) */
+.cartao { position: relative; }
+.cartao .lixo { position: absolute; top: .35rem; right: .35rem; padding: .25rem; border: 0; border-radius: 6px; background: var(--surface); color: var(--muted); opacity: 0; }
+.cartao:hover .lixo, .cartao:focus-within .lixo { opacity: 1; }
+.cartao .lixo:hover { color: var(--red); background: #FDECEC; }
 .cartao:hover { box-shadow: var(--sombra-alta); } /* sem transform: a prévia é position: fixed */
 .cartao:active { cursor: grabbing; }
 .cartao:focus-visible { outline: 2px solid var(--sky); outline-offset: 1px; }
