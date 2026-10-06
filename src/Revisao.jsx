@@ -30,7 +30,7 @@ export default function Revisao({ c, chamar, confirmar, onFechar, onFeito }) {
   const r = h?.rodadas?.at(-1), saida = (r?.testes?.saida || '').split('\n'), arqs = porArquivo(r?.diff);
   const titulo = c.titulo.replace(/`/g, '');
   return (
-    <Dialog open className="revisao" onClose={onFechar} accessibleName={'Revisar ' + titulo} resizable
+    <Dialog open preventFocusRestore className="revisao" onClose={onFechar} accessibleName={'Revisar ' + titulo} resizable
       header={<Bar startContent={<Title level="H5">Revisar</Title>}
         endContent={<Button design="Transparent" icon="decline" tooltip="Fechar" accessibleName="Fechar" onClick={onFechar} />} />}
       footer={<Bar design="Footer"

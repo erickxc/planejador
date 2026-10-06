@@ -140,7 +140,7 @@ function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir }) {
   const salvar = e => { e.preventDefault(); if (!f.titulo?.trim()) return setFaltaTitulo(true); onSalvar(f); };
   const opcoes = (lista, nomes) => [<Option key="" value="">Sem</Option>, ...lista.map(k => <Option key={k} value={k}>{nomes[k]}</Option>)];
   return (
-    <Dialog open className="gaveta" onClose={onFechar} accessibleName={c.titulo || 'Novo cartão'} resizable
+    <Dialog open preventFocusRestore className="gaveta" onClose={onFechar} accessibleName={c.titulo || 'Novo cartão'} resizable
       header={<Bar startContent={<><Tag design="Set2" colorScheme="8" hideStateIcon>{f.coluna}</Tag>{nomeSistema && <Text>{nomeSistema}</Text>}</>}
         endContent={<>
           {!ed && <Button design="Transparent" icon="delete" tooltip="Excluir" accessibleName="Excluir" onClick={() => onExcluir(c)} />}
