@@ -29,7 +29,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .cartao { position: relative; display: flex; flex-direction: column; gap: .4rem; padding: .65rem .75rem; background: var(--sapTile_Background);
   border-radius: var(--sapElement_BorderCornerRadius); box-shadow: var(--sapContent_Shadow0); cursor: grab; }
 .cartao:hover { box-shadow: var(--sapContent_Shadow1); }
-.cartao:active { cursor: grabbing; }
+/* a mãozinha em qualquer ponto do cartão (textos e etiquetas também); botões continuam com o cursor de clique */
+.cartao, .cartao * { cursor: grab; }
+.cartao [ui5-button] { cursor: pointer; }
+.cartao:active, .cartao:active * { cursor: grabbing; }
 .cartao:focus-visible { outline: var(--sapContent_FocusWidth) var(--sapContent_FocusStyle) var(--sapContent_FocusColor); outline-offset: 1px; }
 .cartao.alvo { box-shadow: 0 -3px 0 var(--sapContent_DragAndDropActiveColor), var(--sapContent_Shadow0); }
 .cartao .cab { padding-right: 1.75rem; }

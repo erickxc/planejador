@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { setTheme } from '@ui5/webcomponents-base/dist/config/Theme.js';
 import {
   Bar, BusyIndicator, Button, Card, CardHeader, CheckBox, Dialog, Form, FormItem, Icon, IllustratedMessage, Input, Label, Link, List, ListItemCustom,
@@ -57,17 +58,17 @@ function Etiquetas({ c, longas = false }) {
   );
 }
 
-// prévia: o texto completo do cartão ao lado dele, depois de um instante com o mouse parado em cima
-function Previa({ c, pos }) {
+// prévia: o texto completo do cartão ao lado dele, depois de um instante com o mouse parado em cima.
+// Fica no <body> (portal), fora do cartão: senão o mouse, a rolagem e o arrastar na prévia contam como no cartão.
+function Previa({ c, pos, onEntrar, onSair }) {
   const ref = useRef(null), [y, setY] = useState(pos.top);
   useEffect(() => { const h = ref.current?.offsetHeight || 0; setY(Math.max(8, Math.min(pos.top, innerHeight - h - 8))); }, [pos.top]);
-  return (
-    <div ref={ref} className="previa" style={{ top: y, left: pos.left }}>
+  return createPortal(
+    <div ref={ref} className="previa" style={{ top: y, left: pos.left }} onMouseEnter={onEntrar} onMouseLeave={onSair}>
       <Title level="H5" wrappingType="Normal">{semCrase(c.titulo)}</Title>
       <Etiquetas c={c} />
       <Markdown texto={c.corpo || '_Sem descrição._'} />
-    </div>
-  );
+    </div>, document.body);
 }
 
 function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar, onExcluir }) {
@@ -106,7 +107,7 @@ function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar, onExcluir }) {
         {execucao.passo && <Text maxLines={2} className="passo">{execucao.passo}</Text>}
       </div>}
       {!rodando && NOME_EXEC[exec] && <ObjectStatus state={ESTADO_EXEC[exec]} showDefaultIcon>{NOME_EXEC[exec]}</ObjectStatus>}
-      {previa && <Previa c={c} pos={previa} />}
+      {previa && <Previa c={c} pos={previa} onEntrar={() => clearTimeout(t.current)} onSair={esconder} />}
     </article>
   );
 }
