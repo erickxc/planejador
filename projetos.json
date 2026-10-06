@@ -1,0 +1,11 @@
+[
+  { "id": "transfer", "nome": "2D Transfer", "pasta": "C:/projects/transfer", "quadro": "docs/PENDENCIAS.md", "rumo": "docs/planejamento/rumo.md", "foco": true },
+  { "id": "erp-itp", "nome": "ERP ITP", "pasta": "C:/projects/erp_itp" },
+  { "id": "carteira-web", "nome": "Carteira Web", "pasta": "C:/projects/Carteira Web" },
+  { "id": "medstone", "nome": "Medstone", "pasta": "C:/projects/medstone-main" },
+  { "id": "arc-stone", "nome": "ARC Stone", "pasta": "C:/projects/ARC-Stone" },
+  { "id": "aproxima", "nome": "Aproxima", "pasta": "C:/projects/APROXIMA" },
+  { "id": "brotaqui", "nome": "Brotaqui", "pasta": "C:/projects/ubercgn" },
+  { "id": "site-instituto", "nome": "Site Instituto", "pasta": "C:/projects/WEBSITE instituto" },
+  { "id": "codenotch", "nome": "Codenotch", "pasta": "C:/projects/codenotch" }
+]

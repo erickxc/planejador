@@ -1,0 +1,21 @@
+{
+  "name": "planejador",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Quadro kanban das pendências de todos os sistemas, com o agente planejador",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "check": "node quadro.check.mjs",
+    "instalar-agente": "node -e \"const f=require('fs'),p=require('path'),d=p.join(require('os').homedir(),'.claude','agents');f.mkdirSync(d,{recursive:true});f.copyFileSync('agente/planejador.md',p.join(d,'planejador.md'));console.log('agente instalado em',d)\""
+  },
+  "dependencies": {
+    "lucide-react": "^1.49.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.1"
+  }
+}

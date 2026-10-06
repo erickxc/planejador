@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# estado da Fila e do orquestrador (gerados na máquina)
+execucoes/
+worktrees/
+orquestrador.json
+avisos.json
+.superpowers/
