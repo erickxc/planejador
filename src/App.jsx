@@ -181,15 +181,15 @@ function PainelRumo({ sistema, rumo, onPedir, onVoltar, onRecolher }) {
         <div className="tit"><button className="ic" onClick={onVoltar} title="Todos os sistemas"><ArrowLeft size={16} /></button><h2>Rumo</h2><span className="de">{sistema?.nome}</span></div>
         <button className="ic" onClick={onRecolher} title="Recolher o painel"><PanelRightClose size={18} /></button>
       </header>
-      <button className="pri largo" onClick={onPedir} disabled={r.rodando} title="Roda o agente planejador neste sistema: lê o quadro, os docs, o git e o código, procura o que ficou para trás e atualiza o rumo">
-        {r.rodando ? <><RefreshCw size={15} className="gira" />Planejando… <Rodando inicio={r.inicio} /></> : <><Sparkles size={15} />Pedir rumo ao planejador</>}
+      <button className="pri largo" onClick={onPedir} disabled={r.rodando} title="Roda o planejador nos cartões da Fila deste sistema: completa cada um com o plano, ordena a Fila e atualiza o rumo. Enquanto ele roda, o executor espera.">
+        {r.rodando ? <><RefreshCw size={15} className="gira" />Planejando… <Rodando inicio={r.inicio} /></> : <><Sparkles size={15} />Planejar a Fila</>}
       </button>
       {rumo?.mtime > 0 && !r.rodando && <p className="quando">Última rodada: {hora.format(rumo.mtime)}</p>}
       {(r.rodando || recente) ? <ol className="passos">{(r.passos || []).slice(-10).map((p, i) => <li key={i}>{p.txt}</li>)}</ol> : null}
       {r.ok === false && !r.rodando && <p className="erro"><CircleAlert size={14} />A última rodada terminou com erro. Rode de novo.</p>}
       <div className="rumo-corpo">
         {rumo?.md ? <Markdown texto={rumo.md.replace(/^# .*\n/, '')} />
-          : !r.rodando && <p className="vazio">Ainda não há rumo para {sistema?.nome}. O planejador lê o quadro, os documentos, o git e o código do sistema, e diz o próximo passo.</p>}
+          : !r.rodando && <p className="vazio">Ainda não há rumo para {sistema?.nome}. Coloque cartões na Fila e peça para planejar: o planejador completa cada um, ordena a Fila e diz a ordem.</p>}
       </div>
     </aside>
   );
@@ -210,7 +210,7 @@ function PainelGeral({ sistemas, onAbrir, onPedir, onRecolher }) {
             <button className="nome" onClick={() => onAbrir(s.id)}>{s.foco && <Star size={13} />}{s.nome}<span>{s.abertos} em aberto</span></button>
             {!s.existe ? <p className="sem">Pasta não encontrada</p>
               : s.proximo ? <p>{s.proximo}</p> : <p className="sem">Sem rumo ainda</p>}
-            {s.existe && <button className="link-acao" onClick={() => onPedir(s.id)} disabled={s.rodando}>{s.rodando ? <><RefreshCw size={12} className="gira" />planejando…</> : <><Sparkles size={12} />{s.proximo ? 'Atualizar rumo' : 'Pedir rumo'}</>}</button>}
+            {s.existe && <button className="link-acao" onClick={() => onPedir(s.id)} disabled={s.rodando}>{s.rodando ? <><RefreshCw size={12} className="gira" />planejando…</> : <><Sparkles size={12} />Planejar a Fila</>}</button>}
           </li>
         ))}
       </ul>

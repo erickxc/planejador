@@ -66,7 +66,7 @@ function rodarAgente(p) {
   if (!existsSync(arqQuadro(p))) gravarQuadro(p, ler(modelo(p))); // o agente precisa do arquivo para escrever na Entrada
   mkdirSync(dirname(arqRumo(p)), { recursive: true });
   const pedido = `Rodada de planejamento do sistema "${p.nome}" (a pasta atual). Quadro: ${arqQuadro(p)}. Rumo: ${arqRumo(p)}. `
-    + 'Siga as suas instruções: leia o quadro e as fontes do sistema, acrescente na coluna Entrada só sugestões novas e importantes, e reescreva o rumo.';
+    + 'Siga as suas instruções: planeje só os cartões da coluna Fila (complete cada um com o plano, ordene a Fila) e reescreva o rumo.';
   passo(`Planejador iniciado em ${p.nome}`);
   const proc = spawn(CLAUDE, ['-p', '--agent', 'planejador', '--agents', JSON.stringify(definicaoAgente('planejador')), '--add-dir', DIR,
     '--permission-mode', 'acceptEdits', '--allowedTools', ...FERRAMENTAS, '--output-format', 'stream-json', '--verbose'],
@@ -163,7 +163,8 @@ function api() {
       // o Vite novo roda configureServer ANTES do close do antigo e o filho claude não morre com ele: estado global para encerrar o antigo
       const g = (globalThis.__filaPlanejador ??= {});
       clearInterval(g.timer); g.encerrar?.('o Planejador reiniciou');
-      const executor = criarExecutor({ projetos, lerQuadro: p => ler(textoQuadro(p)), gravarQuadro, rodarAgente: rodarExecutor, rodarTestes: rodarTestesFila, notificar: notificarExecucao, dir: DIR });
+      const executor = criarExecutor({ projetos, lerQuadro: p => ler(textoQuadro(p)), gravarQuadro, rodarAgente: rodarExecutor, rodarTestes: rodarTestesFila, notificar: notificarExecucao, dir: DIR,
+        pausado: id => !!rodadas.get(id)?.rodando }); // enquanto o planejador planeja a Fila, o executor não pega dela
       executor.recuperar();
       g.timer = setInterval(() => executor.tick(), 5000);
       g.encerrar = motivo => { const a = executor.estado(); if (a) executor.parar(a.projeto.id, a.id, motivo); };
@@ -220,6 +221,8 @@ function api() {
             const p = projeto((await corpo(req)).projeto);
             if (rodadas.get(p.id)?.rodando) return json(res, 409, { erro: `o planejador já está rodando em ${p.nome}` });
             if (!existsSync(p.pasta)) return json(res, 400, { erro: `a pasta de ${p.nome} não existe: ${p.pasta}` });
+            if (!ler(textoQuadro(p)).colunas.find(c => c.nome === 'Fila')?.cartoes.length)
+              return json(res, 400, { erro: `a Fila de ${p.nome} está vazia: o planejador só planeja o que está na Fila` });
             rodarAgente(p);
             return json(res, 202, { rodada: rodadas.get(p.id) });
           }

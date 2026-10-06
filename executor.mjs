@@ -10,7 +10,7 @@ const dataBR = ms => { const d = new Date(ms); return `${String(d.getDate()).pad
 const isoLocal = ms => { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
 const achar = (q, id) => q.colunas.flatMap(c => c.cartoes).find(c => c.id === id);
 
-export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, rodarTestes, notificar = () => {}, agora = Date.now, dir, limiteMs = 30 * 60 * 1000 }) {
+export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, rodarTestes, notificar = () => {}, agora = Date.now, dir, limiteMs = 30 * 60 * 1000, pausado = () => false }) {
   let atual = null; // { projeto, id, titulo, inicio, passo, passos, token, matar, copia, ramo, base }
   let seq = 0;
 
@@ -118,7 +118,7 @@ export function criarExecutor({ projetos, lerQuadro, gravarQuadro, rodarAgente, 
         else if (agora() - atual.inicio > limiteMs) tempoEsgotado(atual);
         return;
       }
-      const ps = projetos();
+      const ps = projetos().filter(p => !pausado(p.id));
       const quadros = ps.map(p => ({ projeto: { id: p.id, temGit: git.temGit(p.pasta) }, quadro: lerQuadro(p) }));
       const prox = proximo(quadros);
       if (prox) iniciar(ps.find(p => p.id === prox.projeto.id), prox.cartao);
