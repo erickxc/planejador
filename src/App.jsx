@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Compass, Plus, Search, Sparkles, X, Clock, CircleAlert, Trash2, Save, RefreshCw, PanelRightClose, PanelRightOpen, Pencil, Star, ArrowLeft } from 'lucide-react';
 import Markdown from './Markdown.jsx';
+import Revisao from './Revisao.jsx';
 
 // Planejador de todos os sistemas: um quadro kanban só, com os cartões de todos os sistemas (projetos.json) juntos,
 // filtros de sistema e categoria, e o rumo do agente planejador por sistema no painel da direita.
@@ -11,8 +12,11 @@ const NOME_CAT = { implementacao: 'Implementação', melhoria: 'Melhoria', ideia
 const NOME_PRIO = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const DICA_COLUNA = {
   Entrada: 'Sugestões para revisar', Decidir: 'Esperando uma decisão sua', 'A fazer': 'Decidido, falta fazer',
-  Fazendo: 'Em andamento agora', Terceiros: 'Depende de outras pessoas', Feito: 'Concluído',
+  Fila: 'O agente faz, um por vez', Fazendo: 'Em andamento agora', Revisar: 'Pronto para você revisar', Postergar: 'Parado: o agente não pega',
+  Terceiros: 'Depende de outras pessoas', Feito: 'Concluído',
 };
+const NOME_EXEC = { pronto: 'Pronto', falhou: 'Falhou', parado: 'Parado' };
+const idExec = e => e && (e.projeto?.id || e.projeto); // o servidor manda o sistema (objeto ou id)
 const hora = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 const dur = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
 const classeCol = nome => 'c-' + nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-');
@@ -55,9 +59,11 @@ function Previa({ c, pos }) {
   );
 }
 
-function Cartao({ c, onAbrir, onSoltarAntes }) {
+function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar }) {
   const [sobre, setSobre] = useState(false), [previa, setPrevia] = useState(null), t = useRef(0);
   const resumo = primeiraLinha(c);
+  const exec = c.outros?.exec, rodando = execucao && execucao.id === c.id && idExec(execucao) === c.projeto;
+  const grav = c.prioridade === 'alta' || exec === 'falhou' ? ' grav-alta' : c.prioridade === 'media' ? ' grav-media' : '';
   const largura = 448; // 28rem
   const mostrar = e => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -70,7 +76,7 @@ function Cartao({ c, onAbrir, onSoltarAntes }) {
   const esconder = () => { clearTimeout(t.current); t.current = setTimeout(() => setPrevia(null), 250); };
   useEffect(() => () => clearTimeout(t.current), []);
   return (
-    <article className={'cartao' + (sobre ? ' alvo' : '')} draggable tabIndex={0} onMouseEnter={mostrar} onMouseLeave={esconder}
+    <article className={'cartao' + grav + (rodando ? ' executando' : '') + (sobre ? ' alvo' : '')} draggable tabIndex={0} onMouseEnter={mostrar} onMouseLeave={esconder}
       onDragStart={e => { fechar(); e.dataTransfer.setData('text/plain', JSON.stringify({ id: c.id, projeto: c.projeto })); e.dataTransfer.effectAllowed = 'move'; }}
       onDragOver={e => { e.preventDefault(); e.stopPropagation(); setSobre(true); }} onDragLeave={() => setSobre(false)}
       onDrop={e => { e.preventDefault(); e.stopPropagation(); setSobre(false); onSoltarAntes(e.dataTransfer.getData('text/plain'), c); }}
@@ -78,12 +84,18 @@ function Cartao({ c, onAbrir, onSoltarAntes }) {
       <h3>{semCrase(c.titulo)}</h3>
       {resumo && <p>{resumo}</p>}
       <Etiquetas c={c} />
+      {rodando && <div className="exec-info">
+        <span className="selo rodando">executando há <Rodando inicio={execucao.inicio} /></span>
+        <button className="sec mini-btn" onClick={e => { e.stopPropagation(); onParar(c); }}>Parar</button>
+        {execucao.passo && <small>{execucao.passo}</small>}
+      </div>}
+      {!rodando && NOME_EXEC[exec] && <span className={'selo ' + exec}>{NOME_EXEC[exec]}</span>}
       {previa && <Previa c={c} pos={previa} />}
     </article>
   );
 }
 
-function Coluna({ col, cartoes, onAbrir, onSoltar, onNovo }) {
+function Coluna({ col, cartoes, execucao, onAbrir, onSoltar, onNovo, onParar }) {
   const [sobre, setSobre] = useState(false);
   return (
     <section className={'coluna ' + classeCol(col.nome) + (sobre ? ' alvo' : '')}
@@ -96,7 +108,7 @@ function Coluna({ col, cartoes, onAbrir, onSoltar, onNovo }) {
         <button className="ic mais" title={`Novo cartão em ${col.nome}`} onClick={() => onNovo(col.nome)}><Plus size={16} /></button>
       </header>
       <div className="lista">
-        {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} onAbrir={onAbrir}
+        {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} execucao={execucao} onAbrir={onAbrir} onParar={onParar}
           onSoltarAntes={(dado, alvo) => onSoltar(dado, col.nome, col.cartoes.filter(x => x.projeto === alvo.projeto).findIndex(x => x.id === alvo.id))} />)}
         {!cartoes.length && <div className="vazia">Arraste um cartão para cá</div>}
       </div>
@@ -204,6 +216,18 @@ function PainelGeral({ sistemas, onAbrir, onPedir, onRecolher }) {
   );
 }
 
+// notificação do navegador + bip curto; clicar nela foca a janela e abre a revisão
+function avisar(c, abrir) {
+  try {
+    const ctx = new AudioContext(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.value = 0.1; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.15);
+    o.onended = () => ctx.close();
+  } catch { /* sem áudio: só não toca */ }
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const ok = c.outros.exec === 'pronto', n = new Notification((ok ? '✓ ' : '✗ ') + semCrase(c.titulo), { body: ok ? 'pronto para revisar' : c.outros.exec });
+  n.onclick = () => { focus(); abrir(c); n.close(); };
+}
+
 export default function App() {
   const [sistemas, setSistemas] = useState([]), [quadro, setQuadro] = useState(null), [rumo, setRumo] = useState(null), [erro, setErro] = useState('');
   // filtros: sistemas escondidos (vazio = todos aparecem) e categorias marcadas (vazio = todas)
@@ -211,6 +235,10 @@ export default function App() {
   const [cats, setCats] = useState(() => lido('planejador:categorias', []));
   const [busca, setBusca] = useState(''), [area, setArea] = useState('');
   const [aberto, setAberto] = useState(null);
+  const [execucao, setExecucao] = useState(null); // o cartão que o agente da Fila está executando
+  const [revisando, setRevisando] = useState(null); // cartão em Revisar aberto no painel de revisão
+  const [vistos, setVistos] = useState(() => lido('planejador:vistos', [])); // revisões já abertas (projeto/id/início)
+  const execAnt = useRef(null);
   const [painel, setPainel] = useState(() => lido('planejador:painel', true));
   const [rumoDe, setRumoDe] = useState(null); // sistema aberto no painel (null = lista de todos)
   useEffect(() => lembrar('planejador:painel', painel), [painel]);
@@ -232,6 +260,30 @@ export default function App() {
   useEffect(() => { const t = setInterval(carregarSistemas, 6000); return () => clearInterval(t); }, [carregarSistemas]);
   useEffect(() => { const t = setInterval(carregarRumo, rumo?.rodada?.rodando ? 1500 : 6000); return () => clearInterval(t); }, [carregarRumo, rumo?.rodada?.rodando]);
   useEffect(() => { if (rumo?.rodada && !rumo.rodada.rodando) { carregar(); carregarSistemas(); } }, [rumo?.rodada?.rodando]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // execução: a cada 2 s enquanto houver, senão a cada 4 s; quando termina, avisa se o cartão foi para Revisar
+  const lerExec = useCallback(async () => {
+    try {
+      const e = await chamar('/api/execucao'), ant = execAnt.current;
+      execAnt.current = e; setExecucao(e);
+      if (!ant || (e && e.id === ant.id && idExec(e) === idExec(ant))) return;
+      const q = await chamar('/api/quadro?p=todos'); setQuadro(q);
+      const c = q.colunas.find(x => x.nome === 'Revisar')?.cartoes.find(x => x.id === ant.id && x.projeto === idExec(ant));
+      if (c) avisar(c, setRevisando);
+    } catch { /* o servidor reinicia: tenta de novo no próximo ciclo */ }
+  }, []);
+  useEffect(() => { lerExec(); const t = setInterval(lerExec, execucao ? 2000 : 4000); return () => clearInterval(t); }, [lerExec, !!execucao]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // a permissão só pode ser pedida num gesto do usuário: o primeiro clique na página
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
+    const pedir = () => Notification.requestPermission();
+    addEventListener('click', pedir, { once: true }); return () => removeEventListener('click', pedir);
+  }, []);
+  const chave = c => `${c.projeto}/${c.id}/${c.outros?.inicio || ''}`;
+  const naoVistos = (quadro?.colunas.find(x => x.nome === 'Revisar')?.cartoes || []).filter(c => c.outros?.exec && !vistos.includes(chave(c))).length;
+  useEffect(() => { document.title = naoVistos ? `(${naoVistos}) Planejador` : 'Planejador · 2D TRANSFER'; }, [naoVistos]);
+  const abrirRevisao = c => { setRevisando(c); const k = chave(c); setVistos(v => { const n = v.includes(k) ? v : [...v.slice(-99), k]; lembrar('planejador:vistos', n); return n; }); };
+  const abrir = c => (c.coluna === 'Revisar' ? abrirRevisao(c) : setAberto(c));
+  const parar = c => chamar('/api/execucao/parar', { projeto: c.projeto, id: c.id }).then(() => carregar(), e => setErro(e.message));
 
   const acao = async (url, corpo) => {
     try { setQuadro(await chamar(url + '?p=todos', corpo)); setErro(''); carregarSistemas(); return true; } catch (e) { setErro(e.message); return false; }
@@ -298,7 +350,7 @@ export default function App() {
       <main>
         <div className="quadro">
           {colunas.map(col => (
-            <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={c => setAberto(c)}
+            <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={abrir} execucao={execucao} onParar={parar}
               onNovo={nome => setAberto({ coluna: nome, titulo: '', corpo: '', projeto: padrao(), categoria: cats.length === 1 ? cats[0] : '' })}
               onSoltar={soltar} />
           ))}
@@ -308,6 +360,8 @@ export default function App() {
           : <PainelGeral sistemas={visiveis} onAbrir={setRumoDe} onPedir={pedir} onRecolher={() => setPainel(false)} />)
           : <button className="aba-rumo" onClick={() => setPainel(true)} title="Mostrar o rumo"><Compass size={16} /><span>Rumo</span>{rodandoAlgum && <RefreshCw size={13} className="gira" />}</button>}
       </main>
+      {revisando && <Revisao c={revisando} chamar={chamar} onFechar={() => setRevisando(null)}
+        onFeito={aviso => { setRevisando(null); setErro(aviso || ''); carregar(); carregarSistemas(); }} />}
       {aberto && <Gaveta c={aberto} colunas={colunas.map(c => c.nome)} sistemas={sistemas} onFechar={() => setAberto(null)}
         onSalvar={async f => { if (await acao('/api/salvar', f)) setAberto(null); }}
         onExcluir={async c => { if (await acao('/api/excluir', { id: c.id, projeto: c.projeto })) setAberto(null); }} />}
