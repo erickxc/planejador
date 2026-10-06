@@ -4,7 +4,11 @@ import { execFileSync } from 'node:child_process';
 
 const git = (cwd, ...args) => {
   try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); }
-  catch (e) { throw new Error((e.stderr || e.stdout || e.message).toString().trim() || e.message); }
+  catch (e) {
+    const saida = (e.stderr || e.stdout || '').toString().trim();
+    // sem saída nenhuma o git nem chegou a rodar: o código diz por quê (ex.: 3221225794 = 0xC0000142, falha ao iniciar)
+    throw new Error(saida || `${e.message} (código ${e.status ?? e.code ?? '?'}${e.signal ? `, sinal ${e.signal}` : ''})`);
+  }
 };
 const ok = (cwd, ...args) => { try { git(cwd, ...args); return true; } catch { return false; } };
 
