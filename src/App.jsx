@@ -112,54 +112,69 @@ function Cartao({ c, execucao, onAbrir, onSoltarAntes, onParar, onExcluir }) {
   );
 }
 
-function Coluna({ col, cartoes, execucao, onAbrir, onSoltar, onNovo, onParar, onExcluir }) {
+// clicar no cabeçalho recolhe a coluna numa faixa estreita (nome na vertical e a contagem); clicar na faixa abre de novo.
+// Recolhida, continua recebendo cartões arrastados. O "+" fica no slot de ação, fora da área clicável do cabeçalho.
+function Coluna({ col, cartoes, recolhida, onAlternar, execucao, onAbrir, onSoltar, onNovo, onParar, onExcluir }) {
   const [sobre, setSobre] = useState(false);
   const n = col.nome === 'Fazendo' ? `${cartoes.length}/1` : String(cartoes.length); // o executor faz um por vez
   return (
-    <section className={'coluna ' + classeCol(col.nome) + (sobre ? ' alvo' : '')}
+    <section className={'coluna ' + classeCol(col.nome) + (recolhida ? ' recolhida' : '') + (sobre ? ' alvo' : '')}
       onDragOver={e => { e.preventDefault(); setSobre(true); }} onDragLeave={e => !e.currentTarget.contains(e.relatedTarget) && setSobre(false)}
       onDrop={e => { e.preventDefault(); setSobre(false); onSoltar(e.dataTransfer.getData('text/plain'), col.nome, Infinity); }}>
-      <Card header={<CardHeader titleText={col.nome} subtitleText={DICA_COLUNA[col.nome] || ''} additionalText={n}
-        action={<Button design="Transparent" icon="add" tooltip={`Novo cartão em ${col.nome}`} onClick={() => onNovo(col.nome)} />} />}>
-        <div className="lista">
-          {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} execucao={execucao} onAbrir={onAbrir} onParar={onParar} onExcluir={onExcluir}
-            onSoltarAntes={(dado, alvo) => onSoltar(dado, col.nome, col.cartoes.filter(x => x.projeto === alvo.projeto).findIndex(x => x.id === alvo.id))} />)}
-          {!cartoes.length && <IllustratedMessage name="EmptyList" design="Dot" titleText="Arraste um cartão para cá" />}
-        </div>
-      </Card>
+      {recolhida ? (
+        <button type="button" className="faixa-col" onClick={onAlternar} aria-expanded="false" title={`${col.nome}: ${DICA_COLUNA[col.nome] || ''}. Clique para mostrar`}>
+          <span className="n">{n}</span><span className="nome">{col.nome}</span>
+        </button>
+      ) : (
+        <Card header={<CardHeader interactive onClick={onAlternar} title="Clique para recolher a coluna" titleText={col.nome} subtitleText={DICA_COLUNA[col.nome] || ''} additionalText={n}
+          action={<Button design="Transparent" icon="add" tooltip={`Novo cartão em ${col.nome}`} onClick={() => onNovo(col.nome)} />} />}>
+          <div className="lista">
+            {cartoes.map(c => <Cartao key={(c.projeto || '') + c.id} c={c} execucao={execucao} onAbrir={onAbrir} onParar={onParar} onExcluir={onExcluir}
+              onSoltarAntes={(dado, alvo) => onSoltar(dado, col.nome, col.cartoes.filter(x => x.projeto === alvo.projeto).findIndex(x => x.id === alvo.id))} />)}
+            {!cartoes.length && <IllustratedMessage name="EmptyList" design="Dot" titleText="Arraste um cartão para cá" />}
+          </div>
+        </Card>
+      )}
     </section>
   );
 }
 
-function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir }) {
+function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir, confirmar }) {
   const novo = !c.id;
-  const [ed, setEd] = useState(novo), [faltaTitulo, setFaltaTitulo] = useState(false);
+  const [ed, setEd] = useState(novo), [faltaTitulo, setFaltaTitulo] = useState(false), [ver, setVer] = useState(false);
   const [f, setF] = useState(c);
-  useEffect(() => { setF(c); setEd(!c.id); }, [c]);
+  useEffect(() => { setF(c); setEd(!c.id); setVer(false); }, [c]);
   const set = k => e => setF(x => ({ ...x, [k]: e.target.tagName === 'UI5-CHECKBOX' ? e.target.checked : e.target.value }));
   const nomeSistema = sistemas.find(s => s.id === f.projeto)?.nome;
-  const salvar = e => { e.preventDefault(); if (!f.titulo?.trim()) return setFaltaTitulo(true); onSalvar(f); };
+  const sujo = ed && ['titulo', 'corpo', 'projeto', 'coluna', 'categoria', 'prioridade', 'area', 'adiado'].some(k => (f[k] || '') !== (c[k] || ''));
+  const salvar = e => { e?.preventDefault(); if (!f.titulo?.trim()) return setFaltaTitulo(true); onSalvar(f); };
+  // com alteração não salva, fechar (X, Esc ou Cancelar) pergunta antes de descartar
+  const sair = acao => (sujo ? confirmar({ texto: 'Descartar as alterações deste cartão?', botao: 'Descartar', sim: acao }) : acao());
+  const cancelar = () => sair(() => (novo ? onFechar() : (setF(c), setEd(false))));
   const opcoes = (lista, nomes) => [<Option key="" value="">Sem</Option>, ...lista.map(k => <Option key={k} value={k}>{nomes[k]}</Option>)];
   return (
-    <Dialog open preventFocusRestore className="gaveta" onClose={onFechar} accessibleName={c.titulo || 'Novo cartão'} resizable
+    <Dialog open preventFocusRestore className="gaveta" accessibleName={c.titulo || 'Novo cartão'} resizable initialFocus={novo ? 'titulo-cartao' : undefined}
+      onBeforeClose={e => { if (sujo && e.detail.escPressed) { e.preventDefault(); sair(onFechar); } }} onClose={onFechar}
+      onKeyDown={e => { if (ed && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) salvar(e); }}
       header={<Bar startContent={<><Tag design="Set2" colorScheme="8" hideStateIcon>{f.coluna}</Tag>{nomeSistema && <Text>{nomeSistema}</Text>}</>}
         endContent={<>
           {!ed && <Button design="Transparent" icon="delete" tooltip="Excluir" accessibleName="Excluir" onClick={() => onExcluir(c)} />}
           {!ed && <Button icon="edit" onClick={() => setEd(true)}>Editar</Button>}
-          <Button design="Transparent" icon="decline" tooltip="Fechar" accessibleName="Fechar" onClick={onFechar} />
+          <Button design="Transparent" icon="decline" tooltip="Fechar" accessibleName="Fechar" onClick={() => sair(onFechar)} />
         </>} />}
       footer={ed ? <Bar design="Footer"
-        startContent={!novo && <Button design="Negative" icon="delete" onClick={() => onExcluir(c)}>Excluir</Button>}
+        startContent={!novo ? <Button design="Negative" icon="delete" onClick={() => onExcluir(c)}>Excluir</Button> : <Label className="atalho">Ctrl+Enter salva</Label>}
         endContent={<>
-          <Button design="Transparent" onClick={() => (novo ? onFechar() : (setF(c), setEd(false)))}>Cancelar</Button>
+          <Button design="Transparent" onClick={cancelar}>Cancelar</Button>
           <Button design="Emphasized" icon="save" type="Submit" form="form-cartao">Salvar</Button>
         </>} /> : undefined}>
       {ed ? (
         <form id="form-cartao" className="edicao" onSubmit={salvar}>
           <Form labelSpan="S12 M12 L12 XL12">
             <FormItem labelContent={<Label required>Título</Label>}>
-              <Input value={f.titulo || ''} onInput={e => { set('titulo')(e); setFaltaTitulo(false); }} required valueState={faltaTitulo ? 'Negative' : 'None'}
-                valueStateMessage={<div>Dê um título ao cartão</div>} />
+              <Input id="titulo-cartao" className="titulo-campo" value={f.titulo || ''} onInput={e => { set('titulo')(e); setFaltaTitulo(false); }} required
+                placeholder="O que precisa acontecer, como você diria a alguém. Ex.: Atualizar o CI antes de 19/10"
+                valueState={faltaTitulo ? 'Negative' : 'None'} valueStateMessage={<div>Dê um título ao cartão</div>} />
             </FormItem>
           </Form>
           <Form layout="S1 M3 L3 XL3" labelSpan="S12 M12 L12 XL12">
@@ -172,13 +187,20 @@ function Gaveta({ c, colunas, sistemas, onFechar, onSalvar, onExcluir }) {
             <FormItem labelContent={<Label>Categoria</Label>}><Select value={f.categoria || ''} onChange={set('categoria')}>{opcoes(CATEGORIAS, NOME_CAT)}</Select></FormItem>
             <FormItem labelContent={<Label>Prioridade</Label>}><Select value={f.prioridade || ''} onChange={set('prioridade')}>{opcoes(['alta', 'media', 'baixa'], NOME_PRIO)}</Select></FormItem>
             <FormItem labelContent={<Label>Área</Label>}><Select value={f.area || ''} onChange={set('area')}>{opcoes(AREAS, NOME_AREA)}</Select></FormItem>
-            <FormItem labelContent={<Label>Estado</Label>}><CheckBox text="Adiado" checked={!!f.adiado} onChange={set('adiado')} /></FormItem>
+            <FormItem labelContent={<Label>Adiado</Label>}><CheckBox text="Esperar para fazer" checked={!!f.adiado} onChange={set('adiado')} /></FormItem>
           </Form>
-          <Form labelSpan="S12 M12 L12 XL12">
-            <FormItem labelContent={<Label>Descrição (Markdown)</Label>}>
-              <TextArea value={f.corpo || ''} onInput={set('corpo')} rows={18} className="mono" />
-            </FormItem>
-          </Form>
+          <div className="descricao">
+            <div className="descricao-cab">
+              <Label>Descrição</Label>
+              <SegmentedButton accessibleName="Modo da descrição" onSelectionChange={e => setVer(e.detail.selectedItems[0]?.dataset.k === 'ver')}>
+                <SegmentedButtonItem data-k="escrever" selected={!ver}>Escrever</SegmentedButtonItem>
+                <SegmentedButtonItem data-k="ver" selected={ver}>Ver como fica</SegmentedButtonItem>
+              </SegmentedButton>
+            </div>
+            {ver ? <div className="descricao-previa"><Markdown texto={f.corpo || '_Sem descrição._'} /></div>
+              : <TextArea value={f.corpo || ''} onInput={set('corpo')} rows={16} className="mono" accessibleName="Descrição"
+                placeholder={'Por quê, onde e o que fazer. Aceita Markdown: **negrito**, - listas, `código`.'} />}
+          </div>
         </form>
       ) : (
         <div className="leitura">
@@ -278,11 +300,13 @@ export default function App() {
   const execAnt = useRef(null);
   // o rumo começa recolhido: o quadro fica com a largura (a lista de sistemas já está na lateral)
   const [painel, setPainel] = useState(() => lido('planejador:rumo-aberto', false));
+  const [recolhidas, setRecolhidas] = useState(() => lido('planejador:recolhidas', [])); // colunas recolhidas (pelo nome)
   const [nav, setNav] = useState(() => lido('planejador:nav', true)); // lista de sistemas aberta (ou só os ícones)
   const [tema, setTema] = useState(temaGuardado);
   const [rumoDe, setRumoDe] = useState(null); // sistema aberto no painel (null = lista de todos)
   useEffect(() => lembrar('planejador:rumo-aberto', painel), [painel]);
   useEffect(() => lembrar('planejador:nav', nav), [nav]);
+  useEffect(() => lembrar('planejador:recolhidas', recolhidas), [recolhidas]);
   useEffect(() => lembrar('planejador:ocultos', ocultos), [ocultos]);
   useEffect(() => lembrar('planejador:categorias', cats), [cats]);
   useEffect(() => { setTheme(tema); lembrar('planejador:tema', tema); }, [tema]);
@@ -412,7 +436,8 @@ export default function App() {
           {erro && <MessageStrip design="Negative" className="faixa" onClose={() => setErro('')}>{erro}</MessageStrip>}
           <div className="quadro">
             {colunas.map(col => (
-              <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={abrir} execucao={execucao} onParar={parar} onExcluir={excluir}
+              <Coluna key={col.nome} col={col} cartoes={col.visiveis} onAbrir={abrir} recolhida={recolhidas.includes(col.nome)}
+                onAlternar={() => setRecolhidas(r => (r.includes(col.nome) ? r.filter(x => x !== col.nome) : [...r, col.nome]))} execucao={execucao} onParar={parar} onExcluir={excluir}
                 onNovo={nome => setAberto({ coluna: nome, titulo: '', corpo: '', projeto: padrao(), categoria: cats.length === 1 ? cats[0] : '' })}
                 onSoltar={soltar} />
             ))}
@@ -424,7 +449,7 @@ export default function App() {
       </main>
       {revisando && <Revisao c={revisando} chamar={chamar} confirmar={setPergunta} onFechar={() => setRevisando(null)}
         onFeito={aviso => { setRevisando(null); setErro(aviso || ''); if (!aviso) setToast('Feito'); carregar(); carregarSistemas(); }} />}
-      {aberto && <Gaveta c={aberto} colunas={colunas.map(c => c.nome)} sistemas={sistemas} onFechar={() => setAberto(null)}
+      {aberto && <Gaveta c={aberto} colunas={colunas.map(c => c.nome)} sistemas={sistemas} onFechar={() => setAberto(null)} confirmar={setPergunta}
         onSalvar={async f => { if (await acao('/api/salvar', f)) { setAberto(null); setToast('Cartão salvo'); } }}
         onExcluir={excluir} />}
       <Confirmar pergunta={pergunta} onFechar={() => setPergunta(null)} />

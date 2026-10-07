@@ -32,7 +32,7 @@ function lista(linhas, i0) {
 export default function Markdown({ texto = '' }) {
   const linhas = texto.replace(/\r\n/g, '\n').split('\n'), out = [];
   for (let i = 0; i < linhas.length;) {
-    const l = linhas[i];
+    const l = linhas[i], ini = i; // chave = linha onde o bloco começa (a do fim pode repetir a do próximo bloco)
     if (!l.trim() || /^<!--.*-->$/.test(l.trim())) { i++; continue; }
     const h = /^(#{1,4})\s+(.*)/.exec(l);
     if (h) { const T = `h${Math.min(6, h[1].length + 2)}`; out.push(<T key={i}>{inline(h[2], i)}</T>); i++; continue; }
@@ -41,14 +41,14 @@ export default function Markdown({ texto = '' }) {
       const tab = []; while (i < linhas.length && /^\s*\|/.test(linhas[i])) tab.push(linhas[i++]);
       const cel = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
       const [cab, , ...corpo] = tab;
-      out.push(<div key={i} className="md-tab"><table><thead><tr>{cel(cab).map((c, n) => <th key={n}>{inline(c, n)}</th>)}</tr></thead>
+      out.push(<div key={ini} className="md-tab"><table><thead><tr>{cel(cab).map((c, n) => <th key={n}>{inline(c, n)}</th>)}</tr></thead>
         <tbody>{corpo.map((r, n) => <tr key={n}>{cel(r).map((c, m) => <td key={m}>{inline(c, m)}</td>)}</tr>)}</tbody></table></div>);
       continue;
     }
-    if (/^```/.test(l)) { const bloco = []; i++; while (i < linhas.length && !/^```/.test(linhas[i])) bloco.push(linhas[i++]); i++; out.push(<pre key={i}>{bloco.join('\n')}</pre>); continue; }
+    if (/^```/.test(l)) { const bloco = []; i++; while (i < linhas.length && !/^```/.test(linhas[i])) bloco.push(linhas[i++]); i++; out.push(<pre key={ini}>{bloco.join('\n')}</pre>); continue; }
     if (/^---+$/.test(l.trim())) { out.push(<hr key={i} />); i++; continue; }
     const par = []; while (i < linhas.length && linhas[i].trim() && !/^(#{1,4}\s|\s*([-*]|\d+\.)\s|\s*\||```)/.test(linhas[i])) par.push(linhas[i++]);
-    out.push(<p key={i}>{inline(par.join(' '), i)}</p>);
+    out.push(<p key={ini}>{inline(par.join(' '), ini)}</p>);
   }
   return <div className="md">{out}</div>;
 }

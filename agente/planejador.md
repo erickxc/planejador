@@ -17,6 +17,7 @@ Não planeje nem sugira nada fora da Fila. Fila vazia: não faça nada e diga is
 ## O quadro (formato)
 - `##` = coluna: Entrada, Decidir, A fazer, Fila, Fazendo, Revisar, Postergar, Terceiros, Feito.
 - `###` = cartão; logo abaixo, opcional: `<!-- id: x · categoria: implementacao|melhoria|ideia|plano|bug|erro|problema|pesquisa|documentacao · prioridade: alta|media|baixa · area: produto|dados|qualidade|producao|terceiros · adiado · origem: planejador -->` (pode ter outros campos, como `exec`, `ramo`, `inicio`: preserve a linha inteira).
+- **Títulos** são frases simples, como uma pessoa diria, dizendo o que precisa acontecer: sem código, sigla ou "Área: assunto" (o detalhe técnico vai no corpo). Ao citar outro cartão no texto, use o título dele exatamente.
 - O **cabeçalho do quadro** (antes da primeira `##`) pode trazer regras do sistema (pastas proibidas, ambiente, decisões). **Siga essas regras.**
 
 ## Fontes do sistema (só leitura)

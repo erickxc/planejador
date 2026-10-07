@@ -23,6 +23,16 @@ main { flex: 1; display: flex; min-height: 0; }
 .coluna > [ui5-card]::part(content) { height: calc(100% - 5.125rem - 1px); overflow-y: auto; }
 .coluna.alvo { outline: 2px dashed var(--sapContent_DragAndDropActiveColor); outline-offset: 2px; }
 .coluna.c-postergar > [ui5-card]::part(root) { border: 1px solid var(--sapNegativeElementColor); }
+/* recolhida: faixa estreita com a contagem e o nome na vertical; clicar abre de novo */
+.coluna.recolhida { flex: 0 0 3rem; }
+.faixa-col { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: .75rem; width: 100%; height: 100%; padding: 1rem 0;
+  background: var(--sapTile_Background); border: 1px solid var(--sapTile_BorderColor); border-radius: var(--sapTile_BorderCornerRadius); box-shadow: var(--sapContent_Shadow0);
+  color: var(--sapTile_TitleTextColor); font-family: var(--sapFontHeaderFamily); font-size: var(--sapFontHeader6Size); cursor: pointer; }
+.faixa-col:hover { background: var(--sapTile_Hover_Background); }
+.faixa-col:focus-visible { outline: var(--sapContent_FocusWidth) var(--sapContent_FocusStyle) var(--sapContent_FocusColor); outline-offset: 1px; }
+.faixa-col .nome { writing-mode: vertical-rl; white-space: nowrap; }
+.faixa-col .n { color: var(--sapContent_LabelColor); font-family: var(--sapFontFamily); font-size: var(--sapFontSmallSize); }
+.coluna.c-postergar .faixa-col { border-color: var(--sapNegativeElementColor); }
 .lista { display: flex; flex-direction: column; gap: .5rem; padding: .5rem .75rem .75rem; min-height: 100%; }
 
 /* cartões */
@@ -78,6 +88,13 @@ main { flex: 1; display: flex; min-height: 0; }
 /* três Forms seguidos (título, campos em 3 colunas, descrição) sem o respiro de cabeçalho entre eles */
 .edicao [ui5-form]::part(header) { display: none; }
 .edicao [ui5-form]::part(layout) { padding-block: .25rem; }
+/* título maior que os outros campos: é o que se lê no quadro */
+.edicao .titulo-campo { height: 2.75rem; font-size: var(--sapFontLargeSize); }
+.descricao { display: flex; flex-direction: column; gap: .4rem; padding: .25rem 1rem 0; }
+.descricao-cab { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.descricao-previa { min-height: 20rem; max-height: 50vh; overflow-y: auto; padding: .25rem .75rem; border: 1px solid var(--sapField_BorderColor);
+  border-radius: var(--sapField_BorderCornerRadius); background: var(--sapField_ReadOnly_Background); }
+.atalho { color: var(--sapContent_LabelColor); }
 .mono::part(textarea) { font-family: var(--sapContent_MonospaceFontFamily); font-size: var(--sapFontSmallSize); }
 .revisao [ui5-title][level="H5"] { margin: 1.25rem 0 .5rem; }
 .rev-cab { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .5rem; }
