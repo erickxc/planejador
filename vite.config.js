@@ -23,7 +23,7 @@ const CLAUDE = process.env.CLAUDE_BIN || [join(process.env.APPDATA || '', 'npm',
 const FERRAMENTAS = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git branch:*)', 'Bash(git rev-list:*)',
   'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(npm test:*)', 'Bash(npm run check:*)', 'Bash(mkdir:*)'];
 const FERRAMENTAS_EXECUTOR = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)',
-  'Bash(npm test:*)', 'Bash(npm run:*)', 'Bash(node:*)'];
+  'Bash(npm test:*)', 'Bash(npm run:*)', 'Bash(node:*)', 'Skill'];
 
 const projetos = () => JSON.parse(readFileSync(join(DIR, 'projetos.json'), 'utf8'));
 const projeto = id => { const p = projetos().find(x => x.id === id); if (!p) throw new Error(`sistema ${id} não está no projetos.json`); return p; };
