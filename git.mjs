@@ -29,9 +29,10 @@ const pastasNm = (dir) => {
 };
 const existe = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
 const norm = (p) => path.resolve(p).toLowerCase(); // Windows: sem diferença de maiúsculas
+// junção do Windows pelo próprio Node (sem cmd/mklink: um processo filho falha ao iniciar quando o servidor perdeu o console)
 const junta = (junc, origem) => {
-  try { execFileSync('cmd', ['/c', 'mklink', '/J', junc, origem], { stdio: 'pipe' }); }
-  catch (e) { throw new Error(`mklink falhou: ${(e.stderr || e.message).toString().trim()}`); }
+  try { fs.symlinkSync(path.resolve(origem), junc, 'junction'); }
+  catch (e) { throw new Error(`não consegui ligar ${origem} na cópia: ${e.message}`); }
 };
 const ehLink = (p) => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } };
 const ehDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
