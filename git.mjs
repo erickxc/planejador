@@ -119,8 +119,16 @@ export function alteracoes({ copia, base, ramo }) {
 
 export function descartar({ pasta, ramo, copia }) {
   soltarJuncoes(copia);
-  if (fs.existsSync(copia)) git(pasta, 'worktree', 'remove', '--force', copia);
-  git(pasta, 'worktree', 'prune');
+  if (fs.existsSync(copia)) {
+    try { git(pasta, 'worktree', 'remove', '--force', copia); }
+    catch {
+      // o Windows segura por instantes arquivos recém-escritos (antivírus, indexador): apaga com novas tentativas.
+      // As junções já foram soltas e o fs.rm não segue links: os node_modules originais ficam intactos.
+      soltarJuncoes(copia);
+      fs.rmSync(copia, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    }
+  }
+  try { git(pasta, 'worktree', 'prune'); } catch { /* registro da cópia some no próximo prune */ }
   if (ok(pasta, 'rev-parse', '--verify', '--quiet', `refs/heads/${ramo}`)) git(pasta, 'branch', '-D', ramo);
 }
 
