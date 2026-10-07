@@ -17,9 +17,12 @@ export function podeExecutar(cartao, { temGit }) {
     return { ok: false, motivo: 'cartão adiado' };
   }
 
-  // Rejeita ideias
+  // Rejeita ideias e planos: são decisão ou ação do usuário (ex.: juntar um PR no main), não código
   if (cartao.categoria === 'ideia') {
     return { ok: false, motivo: 'ideia não é tarefa de código' };
+  }
+  if (cartao.categoria === 'plano') {
+    return { ok: false, motivo: 'plano não é tarefa de código: é decisão ou ação sua' };
   }
 
   // Rejeita se não há git

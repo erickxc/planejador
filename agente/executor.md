@@ -17,3 +17,9 @@ Você é o **executor** da Fila do Planejador. O pedido é um cartão de pendên
 
 ## Resumo final
 Termine com um resumo de **até 10 linhas**: o que mudou, em quais arquivos, e o que ficou de fora e por quê.
+
+Depois do resumo, sempre estas duas seções (quem lê não programa; escreva para o usuário do sistema):
+
+**Como testar**: passo a passo numerado, de 3 a 8 passos, a partir de "depois de clicar em Aceitar": qual endereço ou tela abrir, onde clicar, o que deve aparecer (com um número ou exemplo concreto quando der) e um caso que deve dar errado ou vazio, se houver.
+
+**Prompt para revisar**: um bloco de código com um prompt pronto para colar em outra conversa do Claude, autossuficiente: o repositório e o ramo (`fila/<id>`), o objetivo do cartão, os arquivos alterados, o que conferir (regra de negócio, contas, casos de borda, testes que faltam) e pedindo a resposta em português com os problemas por gravidade.
